@@ -1,0 +1,110 @@
+Name,Option Descriptions
+N9060ES1E,Core Software Including IQ and Spectrum Analyzer Apps
+N9000B-MTU,Multi-touch user Interface
+N9000B-PCB,"Interl(R) Core(TM) i3-9100HL CPU @ 1.60GHz, 16 GB"
+N9000B-SSD,MICRON_3400_MTFDKBA512TFH
+N9000B-W11,"Microsoft Windows 11 loT Etherprise LTSC 26100, 64 bit OS"
+N9000B-503,"Frequency Range, 9 kHz to 3.0 GHz"
+N9000B-507,"Frequency Range, 9 kHz to 7.5 GHz"
+N9000B-526,"Frequency Range, 9 kHz to 26.5 GHz"
+N9000B-513,"Frequency Range, 9 kHz to 13.6 GHz"
+N9000B-B25,"Analysis Bandwidth, 25 MHz"
+N9000B-FSA,Fine resolution step attenuator
+N9000B-PFR,Precision frequency reference
+N9000B-UK8,Commercial calibration certificate with test data
+N9000B-A6J,ANSI Z540-1-1994 Calibration
+N9000B-AMG,Calibration + Uncertainties + Guardbanding (Accredited)
+N9000B-CR3,"Connector, Wideband IF output"
+N9000B-T06,"Tracking generator, 9 kHz to 6 GHz"
+N9000B-T03,"Tracking generator, 9 kHz to 3 GHz"
+N9000B-PRC,Portable configuration
+N9000B-P03,"Preamplifier, 3.0 GHz"
+N9000B-P07,"Preamplifier, 7.5 GHz"
+N9000B-P13,"Preamplifier, 13.6 GHz"
+N9000B-P26,"Preamplifier, 26.5 GHz"
+N9000B-SF1,"Security features, exclude launching programs"
+N9000B-SF2,"Security features, prohibit saving results"
+N9000B-EP4,"Enhanced Phase Noise Performance, CXA"
+N9020B-503,"Frequency range, 10 Hz to 3.6 GHz"
+N9020B-508,"Frequency range, 10 Hz to 8.4 GHz"
+N9020B-513,"Frequency range, 10 Hz to 13.6 GHz"
+N9020B-526,"Frequency range, 10 Hz to 26.5 GHz"
+N9020B-532,"Frequency range, 10 Hz to 32 GHz"
+N9020B-544,"Frequency range, 10 Hz to 44 GHz"
+N9020B-550,"Frequency range, 10 Hz to 50 GHz"
+N9020B-P03,"Preamplifier, 3.6 GHz"
+N9020B-P08,"Preamplifier, 8.4 GHz"
+N9020B-P13,"Preamplifier, 13.6 GHz"
+N9020B-P26,"Preamplifier, 26.5 GHz"
+N9020B-P32,"Preamplifier, 32 GHz"
+N9020B-P44,"Preamplifier, 44 GHz"
+N9020B-P50,"Preamplifier, 50 GHz"
+N9020B-B25,"Analysis bandwidth, 25 MHz (Standard)"
+N9020B-B40,"Analysis bandwidth, 40 MHz"
+N9020B-B1X,"Analysis bandwidth, 160 MHz"
+N9020B-MPB,Microwave preselector bypass
+N9020B-PFR,Precision frequency reference
+N9020B-EA3,"Electronic attenuator, 3.6 GHz"
+N9020B-RT1,Real-time analysis up to 160 MHz
+N9020B-EDP,Enhanced display package
+N9020B-EMC,Basic EMC functionality
+N9085EM0E,5G NR measurement application
+N9080EM0E,LTE/LTE-Advanced FDD measurement application
+N9077EM0E,WLAN 802.11a/b/g/j/p/n/af/ah measurement application
+N9077EM1E,WLAN 802.11ac/ax/be measurement application
+N9081EM0E,Bluetooth measurement application
+N9068EM0E,Phase noise measurement application
+N9069EM0E,Noise figure measurement application
+N9064EM0E,VXA vector signal analysis measurement application
+N9067EM0E,Pulse measurement application
+N9020B-1A7,ISO 17025 compliant calibration
+N9020B-A6J,ANSI Z540-1-1994 compliant calibration
+N9020B-UK6,Commercial calibration certificate with test data
+R-50C-011-3,Calibration Assurance Plan - 3 years
+R-50C-011-5,Calibration Assurance Plan - 5 years
+R-51B-001-3C,Warranty Assurance Plan - 3 years
+R-51B-001-5C,Warranty Assurance Plan - 5 years
+N9020B-DP2,"Digital processor, 2 GB capture memory"
+N9020B-LNP,Low noise path 
+N9020B-EDP,Enhanced display package 
+N9020B-EMC,Basic EMC functionality 
+N9020B-CR3,Wideband IF output (rear connector
+N9020B-CRP,Programmable IF output
+N9020B-ALV,Auxiliary log video output 
+N9020B-1CP,Rack mount and handle kit
+N9020B-KYB,USB Keyboard 
+N9020B-MSE,USB Mouse
+N9020B-SSD,Additional removable solid state drive
+N9020B-MTU,Multi-touch user interface upgrade
+N9020B-PC7,"Intel i7 processor, 32 GB RAM, Removable SSD"
+N9020B-W10,Windows 10 operating system
+N6141EM0E,VSA (Vector Signal Analysis) measurement application
+N9020B-DP4,"Digital processor, 4 GB capture memory"
+N9020B-EP2,Enhanced phase noise performance
+N9020B-FSA,2 dB step mechanical attenuator (Fine step attenuator)
+N9054EM0E,V2X (Vehicle-to-Everything) measurement application
+N9054EM1E,"V2X (Vehicle-to-Everything) measurement application, 802.11p"
+N9060EM1E-1FP,PowerSuite measurement application
+N9062EM0E,SCPI language compatibility measurement application
+N9063EM0E,Analog demodulation measurement application
+N9071EM0E,GSM/EDGE measurement application
+N9072EM0E,cdma2000/1xEV-DO measurement application
+N9073EM0E,W-CDMA/HSPA+ measurement application
+N9076EM0E,1xEV-DO measurement application
+N9079EM0E,TD-SCDMA/HSPA measurement application
+N9080EM3E,"LTE FDD measurement application, multi-standard"
+N9080EM4E,LTE-Advanced FDD measurement application
+N9082EM0E,LTE/LTE-Advanced TDD measurement application
+N9083EM0E,Multi-Standard Radio (MSR) measurement application
+N9084EM0E,Short Range Communications measurement application
+N9085EM0E-1FP,5G NR (New Radio) measurement application
+N90EMEDPB,Enhanced display package (Upgrade)
+N90EMEMCB,Basic EMC functionality (Upgrade)
+N90EMESCB,External source control (Upgrade)
+N90EMFP2B,Enhanced phase noise performance (Upgrade)
+N90EMFT1B,Fast sweep capability (Upgrade)
+N90EMFT2B,Enhanced fast sweep speed (Upgrade)
+N90EMPSMB,PowerSuite measurement application (Upgrade)
+N90EMTDSB,Time domain scan functionality (Upgrade)
+U9361Y_RCL,Receiver Calibrator (RCal) Control License
+N6141EM0E,"EMI measurement application, multi-touch UI"

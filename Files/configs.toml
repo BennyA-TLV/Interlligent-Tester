@@ -1,0 +1,12 @@
+# Parameters for InterlligentTester
+
+[output_files]
+path_pdf_reports_root = 'C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results'		    # Root Path for Resuits directory 
+screenShot_root = 'C:\Users\benny\Documents\PycharmProjects\InterlligentTester\ScreenShot'				# Root Path for ScreenShot directory 
+log_root = 'C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Logs'                         	# Root Path for logs File directory 
+[input_files]	   
+path_download_root = 'C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Download'		        # Root Path for Dowmloads directory 
+email_root = 'C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Files'		                # Root Path for email file directory 
+url_root = 'C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Files'                       	# Root Path for url File directory 
+option_descriptions_root = 'C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Files'          # Root Path for option_descriptions File directory 
+bat_mircmd_root = 'C:\Users\benny\Documents\PycharmProjects\InterlligentTester'                       	# Root Path for BAT/MIRCMD File directory 
