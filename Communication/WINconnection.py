@@ -166,12 +166,12 @@ class WINconn:
         return content if content else "SUCCESS: No KB updates found."
 
     # The log file function - operat no the local computer, writing the update/install and reboot process
-    def log_local(self, message):
+    """def log_local(self, message):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"[{timestamp}] {message}\n"
         with open("update_history.log", "a", encoding="utf-8") as f:
             f.write(log_entry)
-        print(f" > Local Log: {message}")
+        print(f" > Local Log: {message}")"""
 
     # The install Windows updates function - operat no the remote device in 5400 second
     def install_updates(self, kb_list):
@@ -181,7 +181,7 @@ class WINconn:
         if not kb_numbers:
             kb_numbers = list(set(re.findall(r'KB(\d{5,})', kb_list)))
         if not kb_numbers:
-            self.log_local("No KBs found in input.")
+            #self.log_local("No KBs found in input.")
             return "No KBs found. - Windows is Updated!"
 
         kb_query = ",".join([f"'{k}'" for k in kb_numbers])
@@ -190,7 +190,7 @@ class WINconn:
         temp_file = f"C:\\res_{run_id}.txt"
         task_name = f"UpdInst_{run_id}"
 
-        self.log_local(f"Starting installation for KBs: {', '.join(kb_numbers)}")
+        #self.log_local(f"Starting installation for KBs: {', '.join(kb_numbers)}")
 
         ps_template = r"""
         try {
@@ -246,11 +246,12 @@ class WINconn:
                     sys.stdout.write(f"\r > Installing... {elapsed}s/{timeout}s")
                     sys.stdout.flush()
                 else:
-                    self.log_local(f"\r > Installing... {elapsed}s/{timeout}s")
+                    pass
+                    #self.log_local(f"\r > Installing... {elapsed}s/{timeout}s")
                 time.sleep(10)
                 elapsed += 10
             else:
-                self.log_local("Timeout reached. Checking Registry for RebootRequired flag...")
+                #self.log_local("Timeout reached. Checking Registry for RebootRequired flag...")
                 reg_check = self.session.run_ps(
                     "Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired'")
                 if "True" in reg_check.std_out.decode():
@@ -262,14 +263,15 @@ class WINconn:
             self.session.run_ps(
                 f"Unregister-ScheduledTask -TaskName '{task_name}' -Confirm:$false; rm '{script_path}', '{temp_file}' -Force -ErrorAction SilentlyContinue")
         print("\n")
-        self.log_local(f"Installation Result: {final_result}")
+        #self.log_local(f"Installation Result: {final_result}")
 
         if "RebootRequired=True" in final_result:
-            self.log_local("Reboot required. Initiating reboot now...")
+            #self.log_local("Reboot required. Initiating reboot now...")
             reboot_res = self.reboot_device()
-            self.log_local(f"Reboot process status: {reboot_res}")
+            #self.log_local(f"Reboot process status: {reboot_res}")
         else:
-            self.log_local("No reboot required for these updates.")
+            pass
+            #self.log_local("No reboot required for these updates.")
 
         return final_result
 
@@ -319,7 +321,8 @@ class WINconn:
                 sys.stdout.write(f"\r > Reconnecting... {elapsed}s/{timeout}s")
                 sys.stdout.flush()
             else:
-                self.log_local(f"\r > Reconnecting... {elapsed}s/{timeout}s")
+                pass
+                #self.log_local(f"\r > Reconnecting... {elapsed}s/{timeout}s")
             time.sleep(20)
             elapsed += 20
 
@@ -357,38 +360,38 @@ class WINconn:
                 result_code = match.group(1)
 
                 if result_code == "2":
-                    self.log_local("\n > Installation Summary:\nSUCCESS: All updates installed successfully.")
+                    #self.log_local("\n > Installation Summary:\nSUCCESS: All updates installed successfully.")
                     report_step("Installation Done", "INFO", 90, results_list, "Step 2", None, worker, logger)
                     add_text_row(text_table, "Installation SUCCESS")
                 elif result_code == "3":
-                    self.log_local("\n > Installation Summary:\nPARTIAL SUCCESS: Some updates were installed, but others encountered minor issues.")
+                    #self.log_local("\n > Installation Summary:\nPARTIAL SUCCESS: Some updates were installed, but others encountered minor issues.")
                     report_step("Installation PARTIAL SUCCESS", "INFO", 90, results_list, "Step 2", None, worker, logger)
                     add_text_row(text_table, "Installation PARTIAL SUCCESS")
                 elif result_code == "4":
-                    self.log_local("\n > Installation Summary:\nFAILURE: The update installation failed.")
+                    #self.log_local("\n > Installation Summary:\nFAILURE: The update installation failed.")
                     report_step("Installation FAILURE", "INFO", 90, results_list, "Step 2", None, worker, logger)
                     add_text_row(text_table, "Installation FAILURE")
                 else:
-                    self.log_local(f"INFO: Installation finished with ResultCode: {result_code}")
+                    #self.log_local(f"INFO: Installation finished with ResultCode: {result_code}")
                     report_step("Installation FAILURE", "INFO", 90, results_list, "Step 2", None, worker, logger)
                     add_text_row(text_table, "Installation FAILURE")
                     # Checking for Reboot flag
                 if "RebootRequired=True" in install_result:
-                    self.log_local("REBOOT REQUIRED: The system needs a restart to complete the installation.")
+                    #self.log_local("REBOOT REQUIRED: The system needs a restart to complete the installation.")
                     report_step("The system needs a restart to complete the installation", "INFO", 95, results_list, "Step 3", None, worker, logger)
                     add_text_row(text_table, "The system needs a restart to complete the installation")
                 else:
-                    self.log_local("NO REBOOT: System does not require a restart at this time.")
+                    #self.log_local("NO REBOOT: System does not require a restart at this time.")
                     report_step("NO REBOOT: System does not require a restart at this time", "INFO", 95, results_list,"Step 3", None, worker, logger)
                     add_text_row(text_table, "NO REBOOT: System does not require a restart at this time")
 
             elif "EMPTY" in install_result:
-                self.log_local("SKIPPED: None of the requested KBs were found or needed.")
+                #self.log_local("SKIPPED: None of the requested KBs were found or needed.")
                 report_step("SKIPPED: None of the requested KBs were found or needed", "INFO", 95, results_list,"Step 3", None, worker, logger)
                 add_text_row(text_table, "SKIPPED: None of the requested KBs were found or needed")
 
             elif "ERROR:" in install_result:
-                self.log_local(f"CRITICAL: An error occurred during the update process: {install_result}")
+                #self.log_local(f"CRITICAL: An error occurred during the update process: {install_result}")
                 report_step("CRITICAL: An error occurred during the update process", "INFO", 95, results_list,install_result, None, worker, logger)
                 add_text_row(text_table, "CRITICAL: An error occurred during the update process")
 
