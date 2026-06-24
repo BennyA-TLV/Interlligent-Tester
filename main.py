@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButto
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from TestingEquipment.SignalAnaLyzer.N90xxB import *
+from Communication.WINconnection import *
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
@@ -145,6 +146,7 @@ class TestWorker(QThread):
     table_update = pyqtSignal(int, str, str, str)
     row_interrupted = pyqtSignal(int)
     firmware_dialog_request = pyqtSignal(str, object)
+    device_info_update = pyqtSignal(int, str, str)
     all_finished = pyqtSignal()
 
     def __init__(self):
@@ -175,25 +177,31 @@ class TestWorker(QThread):
             row_index = task["index"]
             self.current_row_index = row_index
             ip = task["ip"]
-            unit = task["unit"]
             serialNumber = "Unknown_SN"
-            deviceModel = unit
+            deviceModel = "Unknown_Unit"
             self.row_started.emit(row_index)
             recipients = load_email_recipients(Path(load_configFile("email_path"), "Email.csv"), "start")
-            send_test_started_email(recipients, unit, row_index + 1, ip)
             self.test_failed = False
             device_logger, log_file = create_test_logger(row_index)
             device_logger.info(f"Test started | Slot={row_index + 1} | IP={ip}")
             try:
-                if unit == "N90xxB":
-                    serialNumber, deviceModel, result = N90XXB_System_Test(ip, worker=self, logger=device_logger)
+                wait_for_ping(ip, worker=self, logger=device_logger)
+                device_remote_to_administrator(ip, worker=self, logger=device_logger)
+                serialNumber, deviceModel, result = xsa_response(ip, worker=self, logger=device_logger)
+                self.device_info_update.emit(row_index, deviceModel, serialNumber)
+                send_test_started_email(recipients, deviceModel, row_index + 1, ip)
+                test_function = self.get_test_function(deviceModel)
 
-                    if self.test_failed:
-                        final_status = "FAILED"
-                    else:
-                        final_status = "PASSED"
+                if test_function is None:
+                    raise Exception(f"Unsupported unit: {deviceModel}")
+
+                serialNumber, deviceModel, result = test_function(ip, worker=self, logger=device_logger)
+
+                if self.test_failed:
+                    final_status = "FAILED"
                 else:
-                    raise Exception(f"Unsupported unit type: {unit}")
+                    final_status = "PASSED"
+
                 self.progress_update.emit(row_index, 100)
                 recipients = load_email_recipients(Path(load_configFile("email_path"), "Email.csv"), notify_type="end")
                 guide = load_configFile("pdf_reports_path")
@@ -203,9 +211,9 @@ class TestWorker(QThread):
                 else:
                     pdf_file = f"{guide}\\None\\None.pdf"
                 device_logger.info(f"Serial Number detected: {serialNumber}")
-                device_logger.info(f"Unit: {unit}")
+                device_logger.info(f"Unit: {deviceModel}")
                 device_logger.info(f"Test finished | Result={final_status}")
-                send_test_ended_email(recipients, serialNumber, unit, row_index + 1, ip, final_status, pdf_file)
+                send_test_ended_email(recipients, serialNumber, deviceModel, row_index + 1, ip, final_status, pdf_file)
 
                 self.create_pdf_report(filename=pdf_file, slot=row_index + 1, ip=ip, unit=deviceModel, serial_number= serialNumber, final_status=final_status, results=result)
                 self.row_finished.emit(row_index, final_status, pdf_file)
@@ -220,6 +228,7 @@ class TestWorker(QThread):
 
                 self.create_pdf_report(filename=pdf_file, slot=row_index + 1, ip=ip, unit=deviceModel, serial_number= serialNumber, final_status="FAILED", results=error_results)
                 self.row_finished.emit(row_index, "FAILED", pdf_file)
+                self.device_info_update.emit(row_index, deviceModel, serialNumber)
         self.all_finished.emit()
 
     def stop(self):
@@ -477,6 +486,13 @@ class TestWorker(QThread):
         request["event"].wait()
         return request["answer"]
 
+    def get_test_function(self, device_model):
+        if is_n90xxb(device_model):
+            return N90XXB_System_Test
+
+        return None
+
+
 class MainWindow(QWidget):
 
     def __init__(self):
@@ -484,7 +500,7 @@ class MainWindow(QWidget):
         super().__init__()
 
         self.setWindowTitle("Intelligent Tester")
-        self.setWindowIcon(QIcon("Icon/icon.png"))
+        self.setWindowIcon(QIcon("Icon/IntelligentTester.ico"))
         self.setMinimumSize(1000, 600)
         self.rows = []
         self.user_stopped = False
@@ -502,26 +518,18 @@ class MainWindow(QWidget):
         self.worker.all_finished.connect(self.finalize)
         self.worker.table_update.connect(self.update_live_report)
         self.worker.progress_update.connect(self.update_live_progress)
+        self.worker.device_info_update.connect(self.update_device_info)
 
         self.worker.start()
 
     def init_ui(self):
 
-        self.setStyleSheet("""
-            QWidget {
-                background-color: white;
-            }
-        """)
+        self.setStyleSheet("""QWidget { background-color: white;}""")
 
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(
-            30,
-            20,
-            30,
-            30
-        )
-
+        self.main_layout.setContentsMargins(30, 20, 30, 30)
         self.main_layout.setSpacing(15)
+
         header_layout = QHBoxLayout()
         self.main_label = QLabel()
         left_pix = QPixmap(resource_path("Icon/icon.png"))
@@ -547,88 +555,164 @@ class MainWindow(QWidget):
         self.main_layout.addLayout(header_layout)
         self.main_layout.addSpacing(30)
 
+        # ===== TABLE HEADER =====
+        table_header_layout = QHBoxLayout()
+        table_header_layout.setSpacing(20)
+        table_header_layout.setContentsMargins(0, 0, 0, 0)
+
+        checkbox_header = QLabel("")
+        checkbox_header.setFixedWidth(30)
+
+        slot_header = QLabel("Slot")
+        slot_header.setFixedWidth(100)
+
+        sn_header = QLabel("S/N")
+        sn_header.setFixedWidth(180)
+
+        unit_header = QLabel("Unit")
+        unit_header.setFixedWidth(160)
+
+        status_header = QLabel("Status")
+        status_header.setFixedWidth(105)
+
+        progress_header = QLabel("Progress")
+        progress_header.setFixedWidth(150)
+
+        self.report_header = QLabel("Report")
+        self.report_header.setFixedWidth(100)
+
+        for lbl in [
+            checkbox_header,
+            slot_header,
+            sn_header,
+            unit_header,
+            status_header,
+            progress_header,
+            self.report_header
+        ]:
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setFont(QFont("Segoe UI", 15, QFont.Weight.ExtraBold))
+
+            if lbl.text() != "":
+                lbl.setStyleSheet("""
+                    QLabel {
+                        color: #0f172a;
+                        background-color: white;
+                        padding-bottom: 2px;
+                        font-weight: bold;
+                        border-bottom: 1px solid #3b82f6;
+                    }
+                """)
+            else:
+                lbl.setStyleSheet("""
+                       QLabel {
+                           background-color: white;
+                           border: none;
+                       }
+                   """)
+
+        table_header_layout.addWidget(checkbox_header)
+        table_header_layout.addWidget(slot_header)
+        table_header_layout.addWidget(sn_header)
+        table_header_layout.addWidget(unit_header)
+        table_header_layout.addWidget(status_header)
+        table_header_layout.addWidget(progress_header)
+        table_header_layout.addWidget(self.report_header)
+
+        self.main_layout.addLayout(table_header_layout)
+        self.main_layout.addSpacing(5)
+
+        # ===== ROWS =====
         for i in range(5):
             row_layout = QHBoxLayout()
-            row_layout.addStretch()
+            row_layout.setSpacing(20)
+            row_layout.setContentsMargins(0, 0, 0, 0)
 
             cb = QCheckBox()
             cb.setFixedWidth(30)
+
             green_icon = resource_path("Icon/green_ok.png").replace("\\", "/")
             cb.setStyleSheet(f"""
-                QCheckBox::indicator {{width: 22px; height: 22px; border: 2px solid gray; border-radius: 5px; }}
-                QCheckBox::indicator:checked {{image: url({green_icon});background-color: white; }}
+                QCheckBox::indicator {{
+                    width: 22px;
+                    height: 22px;
+                    border: 2px solid gray;
+                    border-radius: 5px;
+                }}
+                QCheckBox::indicator:checked {{
+                    image: url({green_icon});
+                    background-color: white;
+                }}
             """)
 
-            ip_input = QLineEdit()
-            ip_input.setPlaceholderText( f"10.1.44.{200 + i}" )
-            ip_input.setFixedWidth(180)
-            ip_input.setEnabled(False)
-            ip_input.setAlignment(
-                Qt.AlignmentFlag.AlignCenter
-            )
-
-            ip_input.setFont(
-                QFont("Arial", 13, QFont.Weight.Bold)
-            )
-
-            ip_input.setStyleSheet("""
-                QLineEdit {border: 2px solid #cccccc;border-radius: 8px; padding: 5px; background-color: #f9f9f9; }
-            """)
-
-            combo = QComboBox()
-            combo.addItems(["N90xxB"])
-            combo.setFixedWidth(140)
-            combo.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+            slot_label = self.create_info_label(f"Slot {i + 1}", 100)
+            sn_label = self.create_info_label("S/N: ----", 180)
+            unit_label = self.create_info_label("Unit: ----", 160)
 
             status_label = QLabel("PENDING")
-            status_label.setFixedWidth(100)
+            status_label.setFixedSize(105, 40)
             status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
+            status_label.setFont(QFont("Arial", 11, QFont.Weight.Bold))
             status_label.setStyleSheet("""
-                QLabel {background-color: orange; color: white; padding: 5px; border-radius: 8px; font-weight: bold; }
+                QLabel {
+                    background-color: orange;
+                    color: white;
+                    border-radius: 8px;
+                    font-weight: bold;
+                }
             """)
 
             progress_bar = QProgressBar()
-            progress_bar.setFixedWidth(150)
+            progress_bar.setFixedSize(150, 24)
             progress_bar.setValue(0)
             progress_bar.setStyleSheet("""
-            QProgressBar {border-radius: 5px; text-align: center; background-color: #eeeeee;}
-                QProgressBar::chunk { background-color: #28a745; }
+                QProgressBar {
+                    border-radius: 5px;
+                    text-align: center;
+                    background-color: #eeeeee;
+                }
+                QProgressBar::chunk {
+                    background-color: #28a745;
+                }
             """)
 
             report_btn = QPushButton("📄 Report")
-            report_btn.setFixedWidth(120)
+            report_btn.setFixedSize(100, 36)
             report_btn.setVisible(False)
+            self.report_header.hide()
             report_btn.setStyleSheet("""
                 QPushButton {
-                background-color: #17a2b8; color: white; 
-                border-radius: 8px; font-weight: bold; padding: 5px;
+                    background-color: #17a2b8;
+                    color: white;
+                    border-radius: 8px;
+                    font-weight: bold;
                 }
-
                 QPushButton:hover {
                     background-color: #138496;
                 }
             """)
 
             cb.stateChanged.connect(lambda state, idx=i: self.handle_checkbox_change(idx, state))
+
             row_layout.addWidget(cb)
-            row_layout.addWidget(QLabel("IP:", font=QFont("Arial", 12, QFont.Weight.Bold)))
-            row_layout.addWidget(ip_input)
-            row_layout.addSpacing(10)
-            row_layout.addWidget(QLabel("UNIT:", font=QFont("Arial", 12, QFont.Weight.Bold)))
-            row_layout.addWidget(combo)
-            row_layout.addSpacing(15)
+            row_layout.addWidget(slot_label)
+            row_layout.addWidget(sn_label)
+            row_layout.addWidget(unit_label)
             row_layout.addWidget(status_label)
-            row_layout.addSpacing(10)
             row_layout.addWidget(progress_bar)
-            row_layout.addSpacing(10)
             row_layout.addWidget(report_btn)
-            row_layout.addStretch()
+
             self.main_layout.addLayout(row_layout)
+
             self.rows.append({
                 "checkbox": cb,
-                "ip_input": ip_input,
-                "combo": combo,
+                "slot_label": slot_label,
+                "ip": f"10.1.44.{200 + i}",
+                #"ip": f"192.168.1.{200 + i}",
+                "unit_label": unit_label,
+                "sn_label": sn_label,
+                "unit": "----",
+                "serial_number": "----",
                 "status": status_label,
                 "progress": progress_bar,
                 "report_btn": report_btn,
@@ -638,6 +722,7 @@ class MainWindow(QWidget):
                 "is_queued": False,
                 "is_running": False
             })
+
 
         self.main_layout.addStretch()
         buttons_layout = QHBoxLayout()
@@ -680,13 +765,14 @@ class MainWindow(QWidget):
 
         row = self.rows[index]
         if state == 2:
-            row["ip_input"].setEnabled(True)
             if self.is_test_running():
                 self.add_single_row_to_queue(index)
         else:
-            row["ip_input"].setEnabled(False)
             row["progress"].setValue(0)
             row["report_btn"].setVisible(False)
+            self.report_header.hide()
+            row["unit_label"].setText("Unit: ----")
+            row["sn_label"].setText("S/N: ----")
             row["is_finished"] = False
             row["is_queued"] = False
             row["is_running"] = False
@@ -699,22 +785,26 @@ class MainWindow(QWidget):
     def add_single_row_to_queue(self, index):
 
         row = self.rows[index]
+        ip = row["ip"]
+        row["unit"] = "None"
+        row["serial_number"] = "None"
+        row["unit_label"].setText("Detecting...")
+        row["sn_label"].setText("Detecting...")
         if row["is_finished"]: return False
         if row["is_queued"]: return False
         if row["is_running"]: return False
         if not row["checkbox"].isChecked(): return False
-        ip = row["ip_input"].text().strip()
-        if not ip:
-            ip = row["ip_input"].placeholderText()
-        row["progress"].setValue(0)
 
-        task_added = self.worker.add_task({"index": index, "ip": ip, "unit": row["combo"].currentText()})
+        task_added = self.worker.add_task({
+            "index": index,
+            "ip": ip,
+            "unit": "Auto"
+        })
+        row["progress"].setValue(0)
 
         if task_added:
             row["is_queued"] = True
             row["checkbox"].setEnabled(False)
-            row["ip_input"].setEnabled(False)
-            row["combo"].setEnabled(False)
             row["status"].setText("QUEUED")
             row["status"].setStyleSheet("""
                 QLabel {background-color: #ffc107; color: white; padding: 5px; border-radius: 8px; font-weight: bold;}
@@ -769,8 +859,6 @@ class MainWindow(QWidget):
         row["is_queued"] = False
         row["is_running"] = True
         row["checkbox"].setEnabled(False)
-        row["ip_input"].setEnabled(False)
-        row["combo"].setEnabled(False)
         row["status"].setText("RUNNING")
         row["status"].setStyleSheet("""
             QLabel {background-color: #007bff; color: white; padding: 5px; border-radius: 8px; font-weight: bold; }
@@ -785,8 +873,6 @@ class MainWindow(QWidget):
         row["is_queued"] = False
         row["is_running"] = False
         row["checkbox"].setEnabled(True)
-        row["ip_input"].setEnabled(True)
-        row["combo"].setEnabled(True)
         if row["is_finished"]:
             return
         row["status"].setText("STOPPED")
@@ -803,6 +889,7 @@ class MainWindow(QWidget):
         row["is_queued"] = False
         row["is_running"] = False
         row["report_btn"].setVisible(True)
+        self.report_header.show()
         row["progress"].setValue(100)
         if final_status == "FAILED":
             row["status"].setText("FAILED")
@@ -811,8 +898,6 @@ class MainWindow(QWidget):
             row["status"].setText("PASSED")
             row["status"].setStyleSheet("""QLabel {background-color: green; color: white; padding: 5px; border-radius: 8px; font-weight: bold;}""")
         row["checkbox"].setEnabled(True)
-        row["ip_input"].setEnabled(True)
-        row["combo"].setEnabled(True)
         row["pdf_file"] = pdf_file
         try:
             row["report_btn"].clicked.disconnect()
@@ -862,20 +947,34 @@ class MainWindow(QWidget):
         logging.warning("STOP button pressed by user")
         self.user_stopped = True
         self.worker.stop()
-        self.worker.wait(3000)
+        self.worker.test_failed = True
+        self.worker.wait(1000)
         for row in self.rows:
+
+            was_selected = row["checkbox"].isChecked()
+            was_running = row["is_running"]
+            was_queued = row["is_queued"]
+
             row["is_queued"] = False
             row["is_running"] = False
             row["checkbox"].setEnabled(True)
-            row["ip_input"].setEnabled(True)
-            row["combo"].setEnabled(True)
 
-            if not row["is_finished"]:
-                row["status"].setText("PENDING")
+            if row["is_finished"]:
+                continue
+            if was_selected or was_running or was_queued:
+                row["status"].setText("STOPPED")
 
                 row["status"].setStyleSheet("""
-                    QLabel {background-color: orange; color: white; padding: 5px; border-radius: 8px; font-weight: bold;}
+                    QLabel {
+                        background-color: #808080;
+                        color: white;
+                        padding: 5px;
+                        border-radius: 8px;
+                        font-weight: bold;
+                    }
                 """)
+
+                row["is_finished"] = True
 
         self.worker = TestWorker()
         self.worker.row_started.connect(self.lock_row)
@@ -885,6 +984,7 @@ class MainWindow(QWidget):
         self.worker.all_finished.connect(self.finalize)
         self.worker.table_update.connect(self.update_live_report)
         self.worker.progress_update.connect(self.update_live_progress)
+        self.worker.device_info_update.connect(self.update_device_info)
         self.worker.start()
 
         self.start_btn.setEnabled(True)
@@ -929,8 +1029,34 @@ class MainWindow(QWidget):
             self.live_reports.clear()
             QMessageBox.information(self,"Finished","All tests completed.")
 
+    def update_device_info(self, index, unit, serial_number):
+
+        row = self.rows[index]
+
+        if unit is None or unit == "":
+            unit = "Unknown"
+        if serial_number is None or serial_number == "":
+            serial_number = "Unknown"
+
+        row["unit"] = unit
+        row["serial_number"] = serial_number
+
+        row["unit_label"].setText(f"Unit: {unit}")
+        row["sn_label"].setText(f"S/N: {serial_number}")
+
+    def create_info_label(self, text, width):
+
+        label = QLabel(text)
+        label.setFixedSize(width, 40)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        label.setStyleSheet("""QLabel {background-color: #f2f6fb; color: #1f2937; border: 1px solid #cbd5e1; border-radius: 8px;}""")
+
+        return label
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("Icon/IntelligentTester.ico"))
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

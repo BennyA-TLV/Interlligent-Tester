@@ -49,27 +49,38 @@ class SignalAnalyzer(AnalyzerConn):
             pass
 
     # Alignment now all function
-    def alignment_Now_All(self, results_list, worker, logger):
-        print("Starting Alignment Now All... Please wait.")
-        report_step("Alignment ALL", "RUNNING", 26, results_list, "Alignment ALL", None, worker, logger)
-        cal_status = self.query("CAL?")
-
+    def alignment_Now_All(self, results_list, worker, logger, timeout_sec=900):
+        old_timeout = self.timeout
         try:
-            opc = self.query("*OPC?")
-            time.sleep(10)
-            if opc.strip() == "1":
-                #print(cal_status)
-                print("Alignment Now All Completed Successfully!")
-                report_step("Alignment ALL", "PASS", 30, results_list, "Alignment ALL", None, worker, logger)
-            else:
-                print("Alignment Now All with Errors")
-                report_step("Alignment ALL", "FAIL", 30, results_list, "Alignment ALL", None, worker, logger)
-                err = self.device_errors()
-                print(f"\nSystem Status: {err}")
-            print("Waiting 10 second to screenshot the Error information ")
-            time.sleep(10)
+            self.timeout = 600000
+            start_time = time.time()
+
+            print("Starting Alignment Now All... Please wait.")
+            report_step("Alignment ALL", "RUNNING", 26, results_list, "Alignment ALL", None, worker, logger)
+            self.write("*CLS")
+            self.write(":CAL:ALL")
+
+            while time.time() - start_time < timeout_sec:
+                try:
+                    opc = self.query("*OPC?").strip()
+                    if opc.strip() == "1":
+                        print("Alignment Now All Completed Successfully!")
+                        report_step("Alignment ALL", "PASS", 30, results_list, "Alignment ALL", None, worker, logger)
+                        return True
+                    else:
+                        print("Alignment Now All with Errors")
+                        report_step("Alignment ALL", "FAIL", 30, results_list, "Alignment ALL", None, worker, logger)
+                        err = self.device_errors()
+                        print(f"\nSystem Status: {err}")
+                        return False
+                except Exception:
+                    print("Alignment still running...")
+                time.sleep(20)
+
         except Exception as e:
             print(f"Error: {e}")
+        finally:
+            self.timeout = old_timeout
 
     # Alignment RF only function
     def alignment_RF(self):

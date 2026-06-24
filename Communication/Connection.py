@@ -1,6 +1,7 @@
 import pandas as pd
 from pathlib import Path
 from email.message import EmailMessage
+import subprocess
 import csv
 import tomllib
 import smtplib
@@ -28,8 +29,14 @@ app_password ="xiklxfudofbhavuh"
 # The load configuration toml file function - loading the toml file to extract the paths for the files
 def load_configFile(file_path):
 
-    base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
     toml_path = os.path.join(base_dir, "Files", "configs.toml")
+    #base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
+    #toml_path = os.path.join(base_dir, "Files", "configs.toml")
     #debug_print(f"toml_path = {toml_path}")
     #debug_print(f"toml exists = {os.path.exists(toml_path)}")
 
@@ -370,3 +377,73 @@ def debug_print(message):
 
     with open(debug_file, "a", encoding="utf-8") as f:
         f.write(f"{datetime.now()} | {message}\n")
+
+def device_information(device, worker=None, logger=None, timeout=600):
+    results_list = []
+    device_Model = "None"
+    serial_number = "None"
+    device_xsa = False
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+
+        try:
+            if device.connect():
+                idn = device.query("*IDN?")
+
+                if idn:
+                    print(f" > Instrument Ready: {idn}")
+                    device_xsa = True
+                    break
+
+        except Exception:
+            pass
+
+        print(" > Waiting for XSA to finish loading...")
+        report_step("Waiting for XSA to finish loading...", "INFO", 0, results_list, " ", None, worker, logger)
+        time.sleep(30)
+
+    if not device_xsa:
+        print(" > Timeout waiting for XSA")
+        return serial_number, device_Model, results_list
+
+    else:
+        if device.connect():
+            report_step("Device is replaying", "PASS", 1, results_list, " ", None, worker, logger)
+            device_Model = device.get_idn()[1]
+            serial_number = device.get_idn()[2]
+        else:
+            report_step("Device isn't replaying", "FAIL", 1, results_list, " ", None, worker, logger)
+        if check_progress(worker): return results_list
+
+        device.disconnect()
+        return  serial_number, device_Model, results_list
+
+# Wait until remote device replies to ping, timeout: max wait time in seconds, interval: seconds between ping attempts
+def wait_for_ping(ip, worker=None, logger=None, timeout=300, interval=5):
+
+    results_list = []
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        result = subprocess.run(
+            ["ping", "-n", "1", "-w", "1000", ip],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode == 0:
+            print(f" > Device {ip} is online")
+            report_step(f"Device {ip} is online", "PASS", 1, results_list, " ", None, worker, logger)
+
+            return True
+
+        print(f" > Waiting for ping from {ip}...")
+        report_step(f"Waiting for ping from {ip}...", "INFO", 1, results_list, " ", None, worker, logger)
+
+        time.sleep(interval)
+
+    print(f" > Timeout: device {ip} did not reply to ping")
+    report_step(f"Timeout: device {ip} did not reply to ping", "FAIL", 1, results_list, " ", None, worker, logger)
+
+    return False

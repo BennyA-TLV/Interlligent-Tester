@@ -1,20 +1,15 @@
-from typing import Any
-
 from PIL import Image, ImageChops, ImageStat
 from Communication.Connection import *
 from pathlib import Path
 import subprocess
+import socket
 import shutil
-import datetime
 import base64
 import winrm
 import time
 import sys
 import os
 import re
-
-exe_path = r"C:\Program Files\Keysight\SignalAnalysis\Infrastructure\LaunchXSA.exe"
-guide = Path.cwd().parent.parent
 
 # Created by Benny Aberman - 054-3220104
 # Windows connection functions
@@ -38,6 +33,7 @@ guide = Path.cwd().parent.parent
     # The last page function
     # The screenshot all licenses pages function
     # The screenshot all system information pages function
+    # Set remote Windows to Auto Login as Administrator, reboot, reconnect, and verify active user
 
 
 class WINconn:
@@ -49,8 +45,9 @@ class WINconn:
         self.session = None
 
     # The setup for the local computer function - operat the local computer to enable connection to the remote device
-    def setup_local_machine(self):
+    def setup_local_machine(self, worker = None, logger = None):
         print(f"--- Starting Local Setup for {self.target_ip} ---")
+        results_list = []
 
         commands = [
             ('Starting WinRM Service', 'Set-Service WinRM -StartupType Automatic; Start-Service WinRM'),
@@ -61,6 +58,8 @@ class WINconn:
 
         for description, cmd in commands:
             print(f"[Task: {description}]")
+            report_step(f"[Task: {description}]", "INFO", 0, results_list, " ", None, worker, logger)
+
             try:
                 subprocess.run(["powershell", "-Command", cmd], check=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
             except subprocess.CalledProcessError as e:
@@ -68,6 +67,30 @@ class WINconn:
 
     # The connection function - to the remote device
     def connect(self):
+        for transport in ["credssp", "ntlm"]:
+            try:
+                self.session = winrm.Session(
+                    self.target_ip,
+                    auth=(self.username, self.password),
+                    transport=transport,
+                    server_cert_validation='ignore'
+                )
+
+                result = self.session.run_cmd('hostname')
+
+                print(f"--- Connection established to {self.target_ip} using {transport.upper()} ---")
+                return True
+
+            except Exception as e:
+                print(f"Connection Failed using {transport.upper()}: {e}")
+                self.session = None
+
+        return False
+
+    def disconnect(self):
+        self.session = None
+
+    """def connect(self):
         try:
             self.session = winrm.Session(
                 self.target_ip,
@@ -82,7 +105,7 @@ class WINconn:
             print(f"Connection Failed: {e}")
             self.session = None
             return False
-
+"""
     # The check Windows updates function - operat no the remote device getting the KB list in 180 second
     def check_updates(self):
         if not self.session:
@@ -174,7 +197,7 @@ class WINconn:
         print(f" > Local Log: {message}")"""
 
     # The install Windows updates function - operat no the remote device in 5400 second
-    def install_updates(self, kb_list):
+    def install_updates(self, kb_list, results_list, worker = None, logger = None):
         if not self.session: self.connect()
 
         kb_numbers = list(set(re.findall(r'\b\d{5,}\b', kb_list)))
@@ -246,7 +269,7 @@ class WINconn:
                     sys.stdout.write(f"\r > Installing... {elapsed}s/{timeout}s")
                     sys.stdout.flush()
                 else:
-                    pass
+                    report_step(f"\r Installing... {elapsed}s/{timeout}s", "INFO", 81, results_list, "Step 2", None, worker, logger)
                     #self.log_local(f"\r > Installing... {elapsed}s/{timeout}s")
                 time.sleep(10)
                 elapsed += 10
@@ -351,7 +374,7 @@ class WINconn:
 
         print("\n > Step 2: Starting installation (this might take a while)...")
         report_step("Starting installation (this might take a while)... 1:30 min", "INFO", 81, results_list, "Step 2", None, worker, logger)
-        install_result = self.install_updates(available_updates)
+        install_result = self.install_updates(available_updates, external_results, worker, logger)
 
         #print(f"\n > Installation Summary:\n{install_result}")
         if "DONE:" in install_result:
@@ -830,19 +853,659 @@ class WINconn:
 
         print("Done. All system information captured.")
 
+    # Set remote Windows to Auto Login as Administrator, reboot, reconnect, and verify active user
+    def switch_remote_to_administrator(self, worker, logger, admin_user="Administrator", admin_password=None, domain="."):
+        if admin_password is None:
+            admin_password = self.password
+
+        if not self.session:
+            if not self.wait_for_winrm_port(timeout=300):
+                print(" > WinRM port is not ready. Cannot switch user.")
+                return False
+
+            self.setup_local_machine()
+
+            if not self.connect():
+                print(" > Failed to connect before setting Auto Login")
+                return False
+
+        if self.session is None:
+            print(" > Session is None. Cannot continue.")
+            return False
+
+        ps_script = f"""
+        $reg = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+
+        Set-ItemProperty -Path $reg -Name "AutoAdminLogon" -Value "1"
+        Set-ItemProperty -Path $reg -Name "DefaultUserName" -Value "{admin_user}"
+        Set-ItemProperty -Path $reg -Name "DefaultPassword" -Value "{admin_password}"
+        Set-ItemProperty -Path $reg -Name "DefaultDomainName" -Value "{domain}"
+
+        shutdown.exe /r /f /t 5 /c "Switching to Administrator by Automation"
+        """
+
+        print(f" > Setting Auto Login to {admin_user} and rebooting remote PC...")
+        self.session.run_ps(ps_script)
+        self.session = None
+
+        print(" > Waiting for reboot...")
+        time.sleep(90)
+
+        timeout = 1200
+        elapsed = 90
+
+        while elapsed < timeout:
+            if not self.wait_for_winrm_port(timeout=60, worker=worker, logger=logger):
+                elapsed += 60
+                continue
+
+            self.setup_local_machine()
+
+            self.username = admin_user
+            self.password = admin_password
+
+            if self.connect():
+                current_user = self.get_current_user()
+                print(f" > Current active user: {current_user}")
+
+                if current_user and admin_user.lower() in current_user.lower():
+                    print(" > Remote PC is now logged in as Administrator.")
+                    return True
+
+            self.session = None
+            time.sleep(20)
+            elapsed += 20
+
+        print(" > Failed to switch remote PC to Administrator")
+        return False
+
+    # Disable the auto login on the device
+    def disable_auto_login(self):
+        if not self.session:
+            self.connect()
+
+        ps = r"""
+        $reg = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+        Set-ItemProperty -Path $reg -Name "AutoAdminLogon" -Value "0"
+        Remove-ItemProperty -Path $reg -Name "DefaultPassword" -ErrorAction SilentlyContinue
+        $auto = (Get-ItemProperty -Path $reg).AutoAdminLogon
+        if ($auto -eq "0") {
+            Write-Output "SUCCESS"
+        }
+        else {
+            Write-Output "FAILED"
+        }
+        """
+
+        result = self.session.run_ps(ps)
+        return result.std_out.decode().strip()
+
+    # Current user on the device
+    def get_current_user(self):
+        if not self.session:
+            if not self.connect():
+                return None
+        try:
+            result = self.session.run_ps(
+                "(Get-CimInstance Win32_ComputerSystem).UserName"
+            )
+            current_user = result.std_out.decode(errors="ignore").strip()
+            if "\\" in current_user:
+                current_user = current_user.split("\\")[-1]
+            return current_user
+
+        except Exception as e:
+            print(f"Error getting current user: {e}")
+            self.session = None
+            return None
+
+    def bootstrap_winrm_via_schtasks(self, admin_user="Administrator", admin_password=None):
+        if admin_password is None:
+            admin_password = self.password
+
+        remote_temp_unc = rf"\\{self.target_ip}\C$\TEMP"
+        remote_bat_unc = rf"{remote_temp_unc}\enable_winrm.bat"
+        done_file_unc = rf"{remote_temp_unc}\enable_winrm_done.txt"
+
+        remote_bat_path = r"C:\TEMP\enable_winrm.bat"
+        done_file_path = r"C:\TEMP\enable_winrm_done.txt"
+
+        task_name = "EnableWinRM_ByAutomation"
+
+        bat_content = r"""@echo off
+        winrm quickconfig -quiet
+        powershell -ExecutionPolicy Bypass -Command "Enable-PSRemoting -Force"
+        powershell -ExecutionPolicy Bypass -Command "Set-Service WinRM -StartupType Automatic"
+        powershell -ExecutionPolicy Bypass -Command "Start-Service WinRM"
+        powershell -ExecutionPolicy Bypass -Command "Enable-WSManCredSSP -Role Server -Force"
+        winrm set winrm/config/service/auth @{CredSSP="true"}
+        winrm set winrm/config/service @{AllowUnencrypted="true"}
+        winrm set winrm/config/service/auth @{Basic="true"}
+        netsh advfirewall firewall set rule group="Windows Remote Management" new enable=yes
+        echo DONE > C:\TEMP\enable_winrm_done.txt
+        """
+
+        print(" > Bootstrapping WinRM using remote Scheduled Task...")
+
+        try:
+            subprocess.run(
+                rf'net use \\{self.target_ip}\C$ {admin_password} /user:{admin_user} /persistent:no',
+                shell=True,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            Path(remote_temp_unc).mkdir(parents=True, exist_ok=True)
+
+            with open(remote_bat_unc, "w", encoding="utf-8") as f:
+                f.write(bat_content)
+
+            if os.path.exists(done_file_unc):
+                os.remove(done_file_unc)
+
+            create_cmd = (
+                f'schtasks /create '
+                f'/S {self.target_ip} '
+                f'/U {admin_user} '
+                f'/P {admin_password} '
+                f'/TN "{task_name}" '
+                f'/TR "{remote_bat_path}" '
+                f'/SC ONCE '
+                f'/ST 23:59 '
+                f'/RU SYSTEM '
+                f'/RL HIGHEST '
+                f'/F'
+            )
+
+            run_cmd = (
+                f'schtasks /run '
+                f'/S {self.target_ip} '
+                f'/U {admin_user} '
+                f'/P {admin_password} '
+                f'/TN "{task_name}"'
+            )
+
+            delete_cmd = (
+                f'schtasks /delete '
+                f'/S {self.target_ip} '
+                f'/U {admin_user} '
+                f'/P {admin_password} '
+                f'/TN "{task_name}" '
+                f'/F'
+            )
+            result = subprocess.run(create_cmd, shell=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+            if result.returncode != 0:
+                print(" > Failed to create scheduled task")
+                print(result.stdout)
+                print(result.stderr)
+                return False
+            result = subprocess.run(run_cmd, shell=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+            if result.returncode != 0:
+                print(" > Failed to run scheduled task")
+                print(result.stdout)
+                print(result.stderr)
+                return False
+
+            print(" > Scheduled Task started. Waiting for WinRM...")
+
+            start_time = time.time()
+            timeout = 180
+
+            while time.time() - start_time < timeout:
+                if os.path.exists(done_file_unc):
+                    print(" > Bootstrap BAT finished")
+
+                if self.wait_for_winrm_port(timeout=10):
+                    print(" > WinRM is ready")
+                    subprocess.run(
+                        delete_cmd,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                    return True
+
+                time.sleep(5)
+
+            print(" > Timeout: WinRM did not open")
+            return False
+
+        except Exception as e:
+            print(f" > Bootstrap failed: {e}")
+            return False
+
+        finally:
+            subprocess.run(
+                rf'net use \\{self.target_ip}\C$ /delete /y',
+                shell=True,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+    def set_auto_login_user(self, username="Instrument", password=None, domain="."):
+        if password is None:
+            password = self.password
+
+        if not self.session:
+            self.connect()
+
+        ps = f"""
+        $reg = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+        Set-ItemProperty -Path $reg -Name "AutoAdminLogon" -Value "1"
+        Set-ItemProperty -Path $reg -Name "DefaultUserName" -Value "{username}"
+        Set-ItemProperty -Path $reg -Name "DefaultPassword" -Value "{password}"
+        Set-ItemProperty -Path $reg -Name "DefaultDomainName" -Value "{domain}"
+        $auto = (Get-ItemProperty -Path $reg).AutoAdminLogon
+        $user = (Get-ItemProperty -Path $reg).DefaultUserName
+        if ($auto -eq "1" -and $user -eq "{username}") {{
+            Write-Output "SUCCESS"
+        }} else {{
+            Write-Output "FAILED"
+        }}
+        """
+
+        result = self.session.run_ps(ps)
+        return result.std_out.decode(errors="ignore").strip()
+
+    def launch_xsa(self):
+        if not self.session:
+            self.connect()
+
+        exe_path = self.find_launch_xsa_path()
+        if exe_path == "NOT_FOUND":
+            print("LaunchXSA.exe not found")
+            return False
+
+        work_dir = str(Path(exe_path).parent)
+        get_user = self.session.run_ps("(Get-CimInstance Win32_ComputerSystem).UserName")
+        current_user = get_user.std_out.decode(errors="ignore").strip()
+
+        if not current_user:
+            return "Error: No active user session found."
+
+        task_name = f"LaunchXSA_{int(time.time())}"
+        inner_ps = f"""
+        Start-Process -FilePath "{exe_path}" -WorkingDirectory "{work_dir}" -WindowStyle Normal
+        Start-Sleep -Seconds 10
+        """
+        encoded_payload = base64.b64encode(inner_ps.encode("utf-16-le")).decode("utf-8")
+        cmd = (
+            f'$action = New-ScheduledTaskAction '
+            f'-Execute "powershell.exe" '
+            f'-Argument "-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded_payload}"; '
+            f'Register-ScheduledTask '
+            f'-TaskName "{task_name}" '
+            f'-Action $action '
+            f'-User "{current_user}" '
+            f'-RunLevel Highest '
+            f'-Force | Out-Null; '
+            f'Start-ScheduledTask -TaskName "{task_name}"; '
+            f'Start-Sleep -Seconds 15; '
+            f'Get-Process | Where-Object {{$_.ProcessName -like "*XSA*" -or $_.ProcessName -like "*Agilent*" -or $_.ProcessName -like "*Keysight*" -or $_.ProcessName -like "*Signal*"}} | '
+            f'Select-Object ProcessName,Id,Path'
+        )
+        print(f" > Launching XSA for {current_user}")
+        print(f" > XSA Path: {exe_path}")
+        result = self.session.run_ps(cmd)
+        output = result.std_out.decode(errors="ignore").strip()
+        error = result.std_err.decode(errors="ignore").strip()
+
+        self.session.run_ps(
+            f"Unregister-ScheduledTask -TaskName '{task_name}' "
+            f"-Confirm:$false -ErrorAction SilentlyContinue"
+        )
+        if output:
+            print("LaunchXSA started")
+            return True
+        print("LaunchXSA failed to start")
+        if error:
+            print(error)
+
+        return False
+
+    def is_xsa_running(self):
+        if not self.session:
+            if not self.connect():
+                return False
+
+
+        ps = r"""
+        $p = Get-Process -ErrorAction SilentlyContinue |
+             Where-Object {
+                $_.ProcessName -eq "LaunchXSA" -or
+                $_.ProcessName -eq "Agilent.SA.xSA" -or
+                $_.ProcessName -eq "Keysight.SA.xSA" -or
+                $_.ProcessName -like "*xSA*"
+             }
+        if ($p) {
+            $p | Select-Object ProcessName,Id,Path
+        }
+        """
+        result = self.session.run_ps(ps)
+        output = result.std_out.decode(errors="ignore").strip()
+        if output:
+            print("XSA is running")
+            return True
+
+        print("XSA is not running")
+        return False
+
+    def find_launch_xsa_path(self):
+        if not self.session:
+            self.connect()
+
+        ps = r"""
+        $paths = @(
+            "C:\Program Files\Keysight\SignalAnalysis\Infrastructure\LaunchXSA.exe",
+            "C:\Program Files\Agilent\SignalAnalysis\Infrastructure\LaunchXSA.exe",
+            "C:\Program Files\Agilent\SignalAnalysis\Infrastructure\LaunchXSA.exe",
+            "C:\Program Files (x86)\Keysight\SignalAnalysis\Infrastructure\LaunchXSA.exe",
+            "C:\Program Files (x86)\Agilent\SignalAnalysis\Infrastructure\LaunchXSA.exe",
+            "C:\Program Files (x86)\Agilent\SignalAnalysis\Infrastructure\LaunchXSA.exe"
+        )
+        foreach ($p in $paths) {
+            if (Test-Path $p) {
+                Write-Output $p
+                exit
+            }
+        }
+        Write-Output "NOT_FOUND"
+        """
+
+        result = self.session.run_ps(ps)
+        return result.std_out.decode(errors="ignore").strip()
+
+    def list_recent_processes(self):
+        if not self.session:
+            self.connect()
+
+        ps = r"""
+        Get-Process |
+        Sort-Object StartTime -Descending -ErrorAction SilentlyContinue |
+        Select-Object -First 20 ProcessName,Id,Path
+        """
+
+        result = self.session.run_ps(ps)
+        print(result.std_out.decode(errors="ignore"))
+
+    def press_no_xsa_popup(self, wait_seconds=10):
+        if not self.session:
+            self.connect()
+
+        current_user = self.get_current_user()
+        if not current_user:
+            return "Error: No active user session found."
+
+        time.sleep(wait_seconds)
+        self.press_key_remote("TAB", 1)
+        time.sleep(1)
+        self.press_key_remote("ENTER", 1)
+
+        return "NO key sequence sent"
+
+    def wait_for_winrm_port(self, timeout=300, worker=None, logger=None):
+        results_list = []
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                with socket.create_connection((self.target_ip, 5985), timeout=5):
+                    report_step("WinRM port 5985 is open", "PASS", 0, results_list, " ", None, worker, logger)
+                    print(" > WinRM port 5985 is open")
+                    return True
+            except:
+                report_step("Waiting for WinRM port 5985...", "INFO", 0, results_list, " ", None, worker, logger)
+                print(" > Waiting for WinRM port 5985...")
+                time.sleep(10)
+
+        return False
+
+    def disable_windows_update_notifications(self, worker=None, logger=None):
+
+        results_list = []
+
+        if not self.session:
+            if not self.connect():
+                return False
+
+        ps = r"""
+        $reg1 = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate"
+        $reg2 = "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings"
+        New-Item -Path $reg1 -Force | Out-Null
+        New-Item -Path $reg2 -Force | Out-Null
+        # Hide update notifications
+        New-ItemProperty -Path $reg1 -Name "SetUpdateNotificationLevel" -Value 1 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $reg1 -Name "UpdateNotificationLevel" -Value 2 -PropertyType DWord -Force | Out-Null
+        # Disable restart/update toast notifications
+        New-ItemProperty -Path $reg2 -Name "RestartNotificationsAllowed2" -Value 0 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $reg2 -Name "TrayIconVisibility" -Value 0 -PropertyType DWord -Force | Out-Null
+        gpupdate /force | Out-Null
+        Write-Output "SUCCESS"
+        """
+
+        result = self.session.run_ps(ps)
+        output = result.std_out.decode(errors="ignore").strip()
+
+        #print(output)
+        report_step("Disable windows Updated notifications", "PASS", 85, results_list, "Disable windows Updated notifications", None, worker, logger)
+        return "SUCCESS" in output
+
+    def stop_agilent_update_popup(self, worker=None, logger=None):
+        results_list = []
+        if not self.session:
+            if not self.connect():
+                return False
+
+        ps = r'''
+        Stop-Process -Name "AgilentLicenseNotifier" -Force -ErrorAction SilentlyContinue
+        Write-Output "SUCCESS"
+        '''
+
+        result = self.session.run_ps(ps)
+        output = result.std_out.decode(errors="ignore").strip()
+        #print(output)
+        report_step("Disable windows Updated notifications", "PASS", 85, results_list, "Disable windows Updated notifications", None, worker, logger)
+        return "SUCCESS" in output
+
+    def uninstall_all_calibration_advisors(self, dry_run=True):
+        """
+        Search and uninstall possible Keysight/Agilent Calibration Advisor apps.
+        dry_run=True  -> only show what would be removed
+        dry_run=False -> uninstall
+        """
+
+        if not self.session:
+            if not self.connect():
+                return False
+
+        dry = "$true" if dry_run else "$false"
+
+        ps = rf'''
+        $dryRun = {dry}
+        $keywords = @(
+            "Calibration Advisor",
+            "PathWave Calibration",
+            "Keysight PathWave Calibration",
+            "Keysight Calibration",
+            "Agilent Calibration"
+        )
+        $apps = Get-ItemProperty `
+            HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*, `
+            HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* `
+            -ErrorAction SilentlyContinue |
+        Where-Object {{
+            $name = $_.DisplayName
+            if (-not $name) {{ return $false }}
+
+            foreach ($k in $keywords) {{
+                if ($name -like "*$k*") {{ return $true }}
+            }}
+
+            return $false
+        }}
+
+        if (-not $apps) {{
+            Write-Output "NOT_FOUND"
+            exit
+        }}
+
+        foreach ($app in $apps) {{
+            Write-Output "FOUND: $($app.DisplayName) | Version: $($app.DisplayVersion)"
+
+            if ($dryRun) {{
+                Write-Output "DRY_RUN: Will not uninstall"
+                continue
+            }}
+
+            $uninstall = $app.UninstallString
+
+            if ($uninstall -match "MsiExec.exe") {{
+                $guid = [regex]::Match($uninstall, "\{{[A-Fa-f0-9\-]+\}}").Value
+
+                if ($guid) {{
+                    Write-Output "UNINSTALLING MSI: $guid"
+                    Start-Process "msiexec.exe" -ArgumentList "/x $guid /qn /norestart" -Wait
+                    Write-Output "UNINSTALLED: $($app.DisplayName)"
+                }}
+                else {{
+                    Write-Output "ERROR: MSI GUID not found for $($app.DisplayName)"
+                }}
+            }}
+            elseif ($uninstall) {{
+                Write-Output "NON_MSI_FOUND: $($app.DisplayName)"
+                Write-Output "UninstallString: $uninstall"
+            }}
+            else {{
+                Write-Output "ERROR: No uninstall string for $($app.DisplayName)"
+            }}
+        }}
+        '''
+
+        result = self.session.run_ps(ps)
+        output = result.std_out.decode(errors="ignore").strip()
+        error = result.std_err.decode(errors="ignore").strip()
+        #print(output)
+        if error:
+            print(error)
+
+        return "UNINSTALLED" in output or "FOUND" in output
+
+
+def device_remote_to_administrator(target_ip, worker=None, logger=None):
+    results_list = []
+    admin_user = "Administrator"
+    admin_password = "Keysight4u!"
+    instrument_user = "Instrument"
+    instrument_password = "measure4u"
+    exe_destination_file = r'C$\Windows\Temp'
+    bat_file_name = "InterlligentTester.bat"
+    exe_file_name = "nircmd.exe"
+    source = load_configFile("bat_mircmd_path")
+
+    try:
+        updater = WINconn(target_ip, admin_user, admin_password)
+
+        updater.copy_file_to_remote(target_ip, admin_user, admin_password, source, exe_file_name, None, exe_destination_file)
+        report_step("Copy the mircmd file to the device", "PASS", 1, results_list, " ", None, worker, logger)
+        updater.setup_local_machine(worker, logger)
+
+        if not updater.wait_for_winrm_port(timeout=90, worker=worker, logger=logger):
+            report_step("WinRM is not ready - trying bootstrap via schtasks", "INFO", 1, results_list, " ", None, worker, logger)
+            if not updater.bootstrap_winrm_via_schtasks(admin_user, admin_password):
+                print(" > Failed to bootstrap WinRM")
+                report_step("Failed to bootstrap WinRM", "FAIL", 1, results_list, " ", None, worker, logger)
+                return False
+            updater.setup_local_machine(worker, logger)
+
+        report_step("Connect to remote device", "PASS", 1, results_list, " ", None, worker, logger)
+
+        if not updater.connect():
+            report_step("Failed to connect to remote device using WinRM", "FAIL", 1, results_list, " ", None, worker,
+                        logger)
+            return False
+
+        current_user = updater.get_current_user()
+        print(f" > Current active user: {current_user}")
+        report_step(f"Current active user: {current_user}", "INFO", 2, results_list, " ", None, worker, logger)
+
+        if current_user is None:
+            report_step("Cannot detect current active user", "FAIL", 2, results_list, " ", None, worker, logger)
+            return False
+
+        if current_user != "Administrator":
+                report_step("Switch user to Administrator", "INFO", 2, results_list, " ", None, worker, logger)
+                if not updater.switch_remote_to_administrator(worker, logger, admin_user, admin_password, domain="."):
+                    report_step("Failed to switch remote PC to Administrator", "FAIL", 2, results_list, " ", None, worker, logger)
+                    return False
+
+                report_step("User is Administrator", "PASS", 3, results_list, " ", None, worker, logger)
+
+        else:
+             report_step("User is already Administrator", "PASS", 3, results_list, " ", None, worker, logger)
+
+        updater.copy_file_to_remote(target_ip, admin_user, admin_password, source, bat_file_name)
+        report_step("Copy the BAT file to the device", "PASS", 4, results_list, " ", None, worker, logger)
+        updater.run_bat_file()
+        report_step("Remote Device to by control by local computer", "PASS", 4, results_list, " ", None, worker, logger)
+        updater.set_auto_login_user(instrument_user, instrument_password, domain=".")
+        report_step("Auto set user to Instrument", "INFO", 5, results_list, " ", None, worker, logger)
+        xsa_path = updater.find_launch_xsa_path()
+        print(xsa_path)
+        report_step(f"Launch XSA Path: {xsa_path}", "INFO", 6, results_list, " ", None, worker, logger)
+        if updater.launch_xsa():
+            report_step("Launch XSA Program", "PASS", 8, results_list, " ", None, worker, logger)
+            updater.press_no_xsa_popup(20)
+        else:
+            report_step("Failed to launch XSA Program", "FAIL", 8, results_list, " ", None, worker, logger)
+            return False
+
+        return True
+
+    except Exception as e:
+        print(f"Error connecting to WIN user: {e}")
+        report_step(f"Error connecting to WIN user: {e}", "FAIL", 8, results_list, " ", None, worker, logger)
+
 
 if __name__ == "__main__":
 
     target_ip = "192.168.1.200"
     user = "Administrator"
     password = "Keysight4u!"
-    source = r'C:\Users\benny aberman\Documents\PycharmProjects\InterlligentTester'
-    file_name = "InterlligentTester"
 
     updater = WINconn(target_ip, user, password)
-    #updater.copy_to_remote(target_ip,user,password,source,file_name)
-    #updater.setup_local_machine()
-    #print(updater.run_bat_file())
+    updater.uninstall_all_calibration_advisors(False)
+
+
+    """updater.setup_local_machine()
+    updater.disable_windows_update_notifications()"""
+
+    """current_user = updater.get_current_user()
+    print(f" > Current active user: {current_user}")
+
+    if current_user is None:
+        print(" > Cannot connect to remote device. Stop.")
+        sys.exit(1)
+
+    if current_user != "Administrator":
+        if updater.switch_remote_to_administrator(admin_user="Administrator", admin_password=password, domain="."):
+            updater.run_bat_file()
+            updater.set_auto_login_user(username="Instrument", password="measure4u", domain=".")
+        else:
+            print("Failed to switch remote PC to Administrator")
+            sys.exit(1)
+    else:
+        updater.set_auto_login_user(username="Instrument", password="measure4u", domain=".")
+        updater.run_bat_file()
+    print(updater.find_launch_xsa_path())
+    if updater.launch_xsa():
+        updater.press_no_xsa_popup(20)
+    updater.is_xsa_running()"""
+
     #updater.get_remote_os(target_ip,user,password)
 
     #results = updater.check_updates()

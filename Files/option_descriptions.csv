@@ -108,3 +108,156 @@ N90EMPSMB,PowerSuite measurement application (Upgrade)
 N90EMTDSB,Time domain scan functionality (Upgrade)
 U9361Y_RCL,Receiver Calibrator (RCal) Control License
 N6141EM0E,"EMI measurement application, multi-touch UI"
+N9010B-MTU,Multi-touch user interface / multi-touch upgrade
+N9010B-PC7,Windows 7 operating system
+N9010B-SSD,Solid-state drive
+N9010B-W10,Windows 10 operating system
+N9010B-532,"Frequency range, 10 Hz to 3.6 GHz"
+N9010B-B25,25 MHz analysis bandwidth
+N9010B-B40,40 MHz analysis bandwidth
+N9010B-DP2,Digital processor / digital processing hardware option
+N9010B-EP5,Enhanced phase-noise performance option
+N9010B-EXM,External mixing capability / external mixing measurement support
+N9010B-FS1,Fast sweep speed
+N9010B-FS2,Enhanced fast sweep speed
+N9010B-MPB,Microwave preselector bypass
+N9010B-P32,"Preamplifier, 100 kHz to 3.6 GHz"
+N9010B-RTL,Real-time spectrum analysis / real-time capability license
+N9060EM1E-1FP,"PowerSuite measurement application, perpetual fixed license"
+N9068EM0E-1FP,"Phase Noise measurement application, perpetual fixed license"
+N9000B-SSD,Solid-state drive
+N9000B-W10,Windows 10 operating system
+N9000B-B25,25 MHz analysis bandwidth
+N9000B-B40,40 MHz analysis bandwidth
+N9000B-B85,85 MHz analysis bandwidth
+N9000B-B1X,160 MHz analysis bandwidth
+N9000B-B2X,255 MHz analysis bandwidth
+N9000B-FS1,Fast sweep speed
+N9000B-FS2,Enhanced fast sweep speed
+N9000B-FSA,Fine resolution step attenuator
+N9000B-P03,Preamplifier for low-frequency range
+N9000B-P08,Preamplifier to 8.4 GHz
+N9000B-P13,Preamplifier to 13.6 GHz
+N9000B-P26,Preamplifier to 26.5 GHz
+N9000B-P32,Preamplifier to 3.6 GHz
+N9000B-P44,Preamplifier to 44 GHz
+N9000B-MPB,Microwave preselector bypass
+N9000B-RTL,Real-time spectrum analysis license/capability
+N9000B-DP2,Digital processing hardware option
+N9000B-503,Frequency range to 3.0 GHz
+N9000B-507,Frequency range to 7.5 GHz
+N9000B-513,Frequency range to 13.6 GHz
+N9000B-526,Frequency range to 26.5 GHz
+N9000B-532,Frequency range to 3.6 GHz
+N9000B-544,Frequency range to 44 GHz
+N9000B-550,Frequency range to 50 GHz
+N9000B-508,Frequency range to 8.4 GHz
+N9000B-590,Frequency range to 90 GHz
+N9000B-5CX,Frequency range to 110 GHz
+N9010B-B85,85 MHz analysis bandwidth
+N9010B-B1X,160 MHz analysis bandwidth
+N9010B-B2X,255 MHz analysis bandwidth
+N9010B-FSA,Fine resolution step attenuator
+N9010B-P03,Preamplifier for low-frequency range
+N9010B-P08,Preamplifier to 8.4 GHz
+N9010B-P13,Preamplifier to 13.6 GHz
+N9010B-P26,Preamplifier to 26.5 GHz
+N9010B-P44,Preamplifier to 44 GHz
+N9010B-503,Frequency range to 3.0 GHz
+N9010B-507,Frequency range to 7.5 GHz
+N9010B-513,Frequency range to 13.6 GHz
+N9010B-526,Frequency range to 26.5 GHz
+N9010B-544,Frequency range to 44 GHz
+N9010B-550,Frequency range to 50 GHz
+N9010B-508,Frequency range to 8.4 GHz
+N9010B-590,Frequency range to 90 GHz
+N9010B-5CX,Frequency range to 110 GHz
+N9030B-SSD,Solid-state drive
+N9030B-W10,Windows 10 operating system
+N9030B-B25,25 MHz analysis bandwidth
+N9030B-B40,40 MHz analysis bandwidth
+N9030B-B85,85 MHz analysis bandwidth
+N9030B-B1X,160 MHz analysis bandwidth
+N9030B-B2X,255 MHz analysis bandwidth
+N9030B-FS1,Fast sweep speed
+N9030B-FS2,Enhanced fast sweep speed
+N9030B-FSA,Fine resolution step attenuator
+N9030B-P03,Preamplifier for low-frequency range
+N9030B-P08,Preamplifier to 8.4 GHz
+N9030B-P13,Preamplifier to 13.6 GHz
+N9030B-P26,Preamplifier to 26.5 GHz
+N9030B-P32,Preamplifier to 3.6 GHz
+N9030B-P44,Preamplifier to 44 GHz
+N9030B-MPB,Microwave preselector bypass
+N9030B-RTL,Real-time spectrum analysis license/capability
+N9030B-DP2,Digital processing hardware option
+N9030B-503,Frequency range to 3.0 GHz
+N9030B-507,Frequency range to 7.5 GHz
+N9030B-513,Frequency range to 13.6 GHz
+N9030B-526,Frequency range to 26.5 GHz
+N9030B-532,Frequency range to 3.6 GHz
+N9030B-544,Frequency range to 44 GHz
+N9030B-550,Frequency range to 50 GHz
+N9030B-508,Frequency range to 8.4 GHz
+N9030B-590,Frequency range to 90 GHz
+N9030B-5CX,Frequency range to 110 GHz
+N9040B-SSD,Solid-state drive
+N9040B-W10,Windows 10 operating system
+N9040B-B25,25 MHz analysis bandwidth
+N9040B-B40,40 MHz analysis bandwidth
+N9040B-B85,85 MHz analysis bandwidth
+N9040B-B1X,160 MHz analysis bandwidth
+N9040B-B2X,255 MHz analysis bandwidth
+N9040B-FS1,Fast sweep speed
+N9040B-FS2,Enhanced fast sweep speed
+N9040B-FSA,Fine resolution step attenuator
+N9040B-P03,Preamplifier for low-frequency range
+N9040B-P08,Preamplifier to 8.4 GHz
+N9040B-P13,Preamplifier to 13.6 GHz
+N9040B-P26,Preamplifier to 26.5 GHz
+N9040B-P32,Preamplifier to 3.6 GHz
+N9040B-P44,Preamplifier to 44 GHz
+N9040B-MPB,Microwave preselector bypass
+N9040B-RTL,Real-time spectrum analysis license/capability
+N9040B-DP2,Digital processing hardware option
+N9040B-503,Frequency range to 3.0 GHz
+N9040B-507,Frequency range to 7.5 GHz
+N9040B-513,Frequency range to 13.6 GHz
+N9040B-526,Frequency range to 26.5 GHz
+N9040B-532,Frequency range to 3.6 GHz
+N9040B-544,Frequency range to 44 GHz
+N9040B-550,Frequency range to 50 GHz
+N9040B-508,Frequency range to 8.4 GHz
+N9040B-590,Frequency range to 90 GHz
+N9040B-5CX,Frequency range to 110 GHz
+N9041B-SSD,Solid-state drive
+N9041B-W10,Windows 10 operating system
+N9041B-B25,25 MHz analysis bandwidth
+N9041B-B40,40 MHz analysis bandwidth
+N9041B-B85,85 MHz analysis bandwidth
+N9041B-B1X,160 MHz analysis bandwidth
+N9041B-B2X,255 MHz analysis bandwidth
+N9041B-FS1,Fast sweep speed
+N9041B-FS2,Enhanced fast sweep speed
+N9041B-FSA,Fine resolution step attenuator
+N9041B-P03,Preamplifier for low-frequency range
+N9041B-P08,Preamplifier to 8.4 GHz
+N9041B-P13,Preamplifier to 13.6 GHz
+N9041B-P26,Preamplifier to 26.5 GHz
+N9041B-P32,Preamplifier to 3.6 GHz
+N9041B-P44,Preamplifier to 44 GHz
+N9041B-MPB,Microwave preselector bypass
+N9041B-RTL,Real-time spectrum analysis license/capability
+N9041B-DP2,Digital processing hardware option
+N9041B-503,Frequency range to 3.0 GHz
+N9041B-507,Frequency range to 7.5 GHz
+N9041B-513,Frequency range to 13.6 GHz
+N9041B-526,Frequency range to 26.5 GHz
+N9041B-532,Frequency range to 3.6 GHz
+N9041B-544,Frequency range to 44 GHz
+N9041B-550,Frequency range to 50 GHz
+N9041B-508,Frequency range to 8.4 GHz
+N9041B-590,Frequency range to 90 GHz
+N9041B-5CX,Frequency range to 110 GHz
+N9060EM1E-1FP,"PowerSuite measurement application, perpetual fixed license"
+N9068EM0E-1FP,"Phase Noise measurement application, perpetual fixed license"

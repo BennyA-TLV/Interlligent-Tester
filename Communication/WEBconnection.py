@@ -5,12 +5,12 @@ from selenium.common import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 import undetected_chromedriver as uc
 from pathlib import Path
+import tempfile
+import psutil
+import winreg
 import shutil
 import threading
 import ctypes
@@ -36,24 +36,33 @@ import os
 
 # The get keysight newest software details function - the function open the chrome, in show mode, to the take all the newest software details
 def get_keysight_software_details(url, retries=2):
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+    options = uc.ChromeOptions()
+    options.add_argument('--blink-settings=imagesEnabled=false')
+    options.add_argument('--start-maximized')
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--remote-debugging-port=0")
+    profile_dir = tempfile.mkdtemp(prefix="chrome_keysight_")
+    options.add_argument(f"--user-data-dir={profile_dir}")
 
     for attempt in range(retries + 1):
         driver = None
         try:
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=chrome_options)
+            chrome_version = get_chrome_major_version()
+            if chrome_version:
+                driver = uc.Chrome(version_main=chrome_version, options=options, use_subprocess=True)
+            else:
+                driver = uc.Chrome(options=options, use_subprocess=True)
 
-            driver.set_page_load_timeout(30)
+            driver.set_page_load_timeout(90)
+            driver.set_window_size(400, 300)
             driver.get(url)
 
-            WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            WebDriverWait(driver, 40).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
             soup = BeautifulSoup(driver.page_source, 'html.parser')
             page_text = soup.get_text(separator=' ')
@@ -78,9 +87,9 @@ def get_keysight_software_details(url, retries=2):
             print(f"Attempt {attempt + 1}: {e}")
         except Exception as e:
             print(f"Attempt {attempt + 1}: Unexpected error - {str(e)}")
+
         finally:
-            if driver:
-                driver.quit()
+            safe_close_driver(driver)
 
         if attempt < retries:
             time.sleep(5)
@@ -130,8 +139,7 @@ def get_keysight_software_details(url, retries=2):
                 })
     finally:
         try:
-            driver.close()
-            driver.quit()
+            safe_close_driver(driver)
         except:
             pass
 
@@ -166,21 +174,42 @@ def get_latest_version_for_os(target_os, url):
 
     return matching_versions[0]
 
+def get_chrome_major_version():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,r"Software\Google\Chrome\BLBeacon")
+        version, _ = winreg.QueryValueEx(key, "version")
+
+        return int(version.split(".")[0])
+    except:
+        return None
+
 # The get keysight software versions with the OS details function
 def get_keysight_versions_with_os(url):
     global results
     options = uc.ChromeOptions()
     options.add_argument('--blink-settings=imagesEnabled=false')
     options.add_argument('--start-maximized')
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--remote-debugging-port=0")
+    profile_dir = tempfile.mkdtemp(prefix="chrome_keysight_")
+    options.add_argument(f"--user-data-dir={profile_dir}")
     driver = None
 
     try:
-        driver = uc.Chrome(version_main=147, options=options)
+        chrome_version = get_chrome_major_version()
+        if chrome_version:
+            driver = uc.Chrome(version_main=chrome_version, options=options, use_subprocess=True)
+        else:
+            driver = uc.Chrome( options=options,use_subprocess=True)
         driver.set_window_size(400, 300)
         results = []
         try:
             driver.get(url)
-            wait = WebDriverWait(driver, 30)
+            wait = WebDriverWait(driver, 40)
             show_popup_non_blocking("Automation started. Do not close the browser!\nLooking for the Newest Version",
                                     "System Message", 10)
             tab_xpath = "//li[contains(., 'Previous Versions')]"
@@ -205,12 +234,10 @@ def get_keysight_versions_with_os(url):
     except Exception as e:
         print(f" > Exception in get_active_session_id: {e}")
 
-    finally:
-        try:
-            driver.close()
-            driver.quit()
-        except Exception as e:
-            print(f" > Exception in get_active_session_id: {e}")
+    try:
+        safe_close_driver(driver)
+    except Exception as e:
+        print(f" > Exception in get_active_session_id: {e}")
 
     return results
 
@@ -223,10 +250,14 @@ def download_keysight_version(target_version, url, model, download=False, downlo
     driver = None
 
     try:
-        driver = uc.Chrome(version_main=147, options=options)
+        chrome_version = get_chrome_major_version()
+        if chrome_version:
+            driver = uc.Chrome(version_main=chrome_version, options=options, use_subprocess=True)
+        else:
+            driver = uc.Chrome(options=options, use_subprocess=True)
         driver.set_window_size(400, 300)
         driver.get(url)
-        WebDriverWait(driver, 20)
+        WebDriverWait(driver, 40)
         show_popup_non_blocking("Automation started. Do not close the browser!\nLooking for the Newest Version for the OS", "System Message", 10)
         time.sleep(10)
 
@@ -248,16 +279,14 @@ def download_keysight_version(target_version, url, model, download=False, downlo
             return None, None
 
         if not download:
-            driver.close()
-            driver.quit()
+            safe_close_driver(driver)
             return url, False
 
         folder = Path(download_path, model)
         folder.mkdir(parents=True, exist_ok=True)
         if any(f.is_file() and target_version.lower() in f.name.lower() for f in folder.iterdir()):
             print(f"Find the {target_version} in {download_path}//{model} no need to download.")
-            driver.close()
-            driver.quit()
+            safe_close_driver(driver)
             return download_path, False
         else:
             print(f"Clicking Download Button for Version {target_version}")
@@ -290,8 +319,7 @@ def download_keysight_version(target_version, url, model, download=False, downlo
 
             if check_standard_download(download_btn, download_defult):
                 copy_file_by_name(download_defult, model, download_path, target_version)
-                driver.close()
-                driver.quit()
+                safe_close_driver(driver)
 
     except Exception as e:
         print(f" > Exception in get_active_session_id: {e}")
@@ -396,6 +424,47 @@ def copy_file_by_name(source_folder, device_model,  destination_folder, contains
     shutil.copy2(latest_file, target)
 
     return str(target)
+
+def safe_close_driver(driver):
+    if driver is None:
+        return
+
+    user_data_dir = None
+
+    try:
+        for arg in driver.options.arguments:
+            if arg.startswith("--user-data-dir="):
+                user_data_dir = arg.split("=", 1)[1].strip('"')
+                break
+    except Exception:
+        pass
+
+    try:
+        driver.quit()
+    except Exception:
+        pass
+
+    time.sleep(2)
+
+    if user_data_dir:
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                name = proc.info.get("name", "").lower()
+                cmdline = " ".join(proc.info.get("cmdline") or "")
+
+                if "chrome.exe" in name and user_data_dir.lower() in cmdline.lower():
+                    print(f"Killing Chrome PID {proc.pid}")
+                    proc.kill()
+
+            except Exception:
+                pass
+
+        time.sleep(1)
+
+        try:
+            shutil.rmtree(user_data_dir, ignore_errors=True)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

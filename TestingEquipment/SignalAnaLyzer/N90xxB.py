@@ -1,9 +1,7 @@
-from Communication.Connection import *
 from Communication.WINconnection import WINconn
 from TestingEquipment.SignalAnaLyzer.SignalAnalyzer import *
 from Communication.WEBconnection import *
 from pathlib import Path
-import pyvisa
 import time
 import os
 
@@ -126,8 +124,8 @@ def N90XXB_System_Test(target_ip, worker=None, logger=None):
     device = None
     device_Model = "None"
     serial_number = "None"
-    user = "Administrator"
-    password = "Keysight4u!"
+    admin_user = "Administrator"
+    admin_password = "Keysight4u!"
     exe_destination_file = r'C$\Windows\Temp'
     bat_file_name = "InterlligentTester.bat"
     exe_file_name = "nircmd.exe"
@@ -144,30 +142,32 @@ def N90XXB_System_Test(target_ip, worker=None, logger=None):
     try:
         device = N90XXB(target_ip, logger)
         if device.connect():
-            report_step("N90XXB Device is replaying", "PASS", 2, results_list, " ", None, worker, logger)
+            report_step("N90XXB Device is replaying", "PASS", 8, results_list, " ", None, worker, logger)
+            device.disconnect()
         else:
-            report_step("N90XXB Device isn't replaying", "FAIL", 2, results_list, " ", None, worker, logger)
-        if check_progress(worker): return results_list
-        report_step("Connection to N90XXB Windows Device", "RUNNING", 4, results_list, " ", None, worker, logger)
-        windows_control = WINconn(target_ip, user, password)
+            report_step("N90XXB Device isn't replaying", "FAIL", 8, results_list, " ", None, worker, logger)
+            device.disconnect()
+        if check_progress(worker): return serial_number, device_Model, results_list
+        report_step("Connection to N90XXB Windows Device", "RUNNING", 10, results_list, " ", None, worker, logger)
+        windows_control = WINconn(target_ip, admin_user, admin_password)
         if windows_control.connect():
-            report_step("Connection to N90XXB Windows Device", "PASS", 4, results_list, " ", None, worker, logger)
-            if check_progress(worker): return results_list
-            windows_control.copy_file_to_remote(target_ip, user, password, source, bat_file_name)
-            report_step("Copy the BAT file to the device", "PASS", 6, results_list, " ", None, worker, logger)
-            if check_progress(worker): return results_list
-            windows_control.copy_file_to_remote(target_ip, user, password, source, exe_file_name, None, exe_destination_file)
-            report_step("Copy the mircmd file to the device", "PASS", 8, results_list, " ", None, worker, logger)
-            if check_progress(worker): return results_list
-            windows_control.setup_local_machine()
-            report_step("local computer command to control device", "PASS", 10, results_list, " ", None, worker, logger)
-            if check_progress(worker): return results_list
-            print(windows_control.run_bat_file())
-            report_step("Remote Device to by control by local computer", "PASS", 12, results_list, " ", None, worker, logger)
-            if check_progress(worker): return results_list
-            requested_os = windows_control.get_remote_os(target_ip, user, password)
+            report_step("Connection to N90XXB Windows Device", "PASS", 10, results_list, " ", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+            #windows_control.copy_file_to_remote(target_ip, admin_user, admin_password, source, bat_file_name)
+            #report_step("Copy the BAT file to the device", "PASS", 6, results_list, " ", None, worker, logger)
+            #if check_progress(worker): return serial_number, device_Model, results_list
+            #windows_control.copy_file_to_remote(target_ip, admin_user, admin_password, source, exe_file_name, None, exe_destination_file)
+            #report_step("Copy the mircmd file to the device", "PASS", 8, results_list, " ", None, worker, logger)
+            #if check_progress(worker): return serial_number, device_Model, results_list
+            #windows_control.setup_local_machine(worker, logger)
+            #report_step("Local computer command to control device", "PASS", 10, results_list, " ", None, worker, logger)
+            #if check_progress(worker): return serial_number, device_Model, results_list
+            #windows_control.run_bat_file()
+            #report_step("Remote Device to by control by local computer", "PASS", 12, results_list, " ", None,worker, logger)
+            #if check_progress(worker): return serial_number, device_Model, results_list
+            requested_os = windows_control.get_remote_os(target_ip, admin_user, admin_password)
             report_step("N90XXB Device OS", "INFO", 14, results_list, requested_os, None, worker, logger)
-            if check_progress(worker): return results_list
+            if check_progress(worker): return serial_number, device_Model, results_list
         else:
             report_step("Connection to N90XXB Windows Device", "FAIL", 4, results_list, " ", None, worker, logger)
             report_step("Copy the BAT file to the device", "FAIL", 6, results_list, " ", None, worker, logger)
@@ -175,130 +175,155 @@ def N90XXB_System_Test(target_ip, worker=None, logger=None):
             report_step("local computer command to control device", "FAIL", 10, results_list, " ", None, worker, logger)
             report_step("Remote Device to by control by local computer", "FAIL", 12, results_list, " ", None, worker, logger)
             report_step("N90XXB Device OS", "FAIL", 14, results_list, " ", None, worker, logger)
-            if check_progress(worker): return results_list
+            if check_progress(worker): return serial_number, device_Model, results_list
 
 
     except Exception as e:
         print(f"Error: {e}")
+        return serial_number, device_Model, results_list
 
-    if  device.connect() and windows_control.connect():
-        device_Model = device.get_idn()[1]
-        serial_number = device.get_idn()[2]
-        firmwareUnitVer = device.get_idn()[3]
-        if check_progress(worker): return results_list
-        report_step("N90XXB Connected", "PASS", 15, results_list, " ", None, worker, logger)
-        results_list.extend(device.system_full_query())
-        report_step("Get System information", "PASS", 20, results_list, " ", None, worker, logger)
-        if check_progress(worker): return results_list
-        print("\n")
-        output, external_results = device.license_full_query(":SYSTem:LKEY:LIST?")
-        print(output)
-        results_list.extend(external_results)
-        report_step("Keysight License Manager", "PASS", 25, results_list, " ", None, worker, logger)
-        if check_progress(worker): return results_list
-        device.alignment_Now_All(results_list, worker, logger)
-        if check_progress(worker): return results_list
-        device.capture_other_screen(results_list, worker, logger)
-        report_step("Screen Shots all Data (Errors, Hardware, LXI, HW_Statistics)", "PASS", 35, results_list, "Done", None, worker, logger)
-        if check_progress(worker): return results_list
-        time.sleep(5)
-        device.open_system_screen()
-        report_step("Open System Information", "PASS", 36, results_list, " ", None, worker, logger)
-        if check_progress(worker): return results_list
-        device.disconnect()
-        windows_control.capture_all_systems(serial_number, results_list, worker, logger)
-        report_step("Screen Shots System Information", "PASS", 40, results_list, "Done", None, worker, logger)
-        if check_progress(worker): return results_list
-        time.sleep(2)
-        print(windows_control.open_license_manager())
-        report_step("Open License Window", "PASS", 41, results_list, " ", None, worker, logger)
-        if check_progress(worker): return results_list
-        time.sleep(5)
-        windows_control.capture_all_licenses(serial_number, results_list, worker, logger)
-        report_step("Screen Shots License Information", "PASS", 45, results_list, "Done", None, worker, logger)
-        if check_progress(worker): return results_list
-        url = get_urls(device_Model, load_configFile("url_path"))
-
-        if url != "No url":
-            report_step("Get Url for device", "INFO", 46, results_list, f"Get Url for device  - {url}", None, worker, logger)
-            add_text_row(firmware_info_table, f"Url for device  - {url}")
-            if check_progress(worker): return results_list
-            firmwareWebVer = get_keysight_software_details(url)
-            report_step("Latest firmware for device", "INFO", 48, results_list, f"Latest firmware for device - {firmwareWebVer['revision']}", None, worker, logger)
-            add_text_row(firmware_info_table, f"Latest firmware for device - {firmwareWebVer['revision']}")
-            if check_progress(worker): return results_list
-            latest = get_latest_version_for_os(requested_os, url)
-            add_text_row(firmware_info_table, f"Device OS - {requested_os}")
-            report_step("Latest firmware for device OS", "INFO", 50, results_list, f"Latest firmware for device OS - {latest}", None, worker, logger)
-            add_text_row(firmware_info_table, f"Latest firmware for device OS - {latest}")
-            if check_progress(worker): return results_list
-            print(f"The latest version for {requested_os} is: {latest}")
-            link, was_download = download_keysight_version(latest, url, device_Model, download, download_path, download_defult)
-            if was_download:
-                report_step("link for Download the latest firmware OS", "INFO", 52, results_list, f"Download the latest firmware OS - {link}", None, worker, logger)
-                add_text_row(firmware_info_table, f"link for Download the latest firmware for OS - {link}")
-            else:
-                report_step("Latest firmware OS", "INFO", 52, results_list, f"latest firmware OS - {link}", None, worker, logger)
-                add_text_row(firmware_info_table, f"Latest firmware for OS - {link}")
-            if check_progress(worker): return results_list
-            print(f"The firmware {latest} file is in: {link}\\{device_Model}")
-
-            if (firmwareWebVer.get('revision') != firmwareUnitVer) and (
-                    requested_os.lower() in firmwareWebVer.get('os').lower()):
-                print(f"Your operation system is {requested_os}")
-                print(f"The Unit firmware is {firmwareUnitVer} and New firmware is {firmwareWebVer.get('revision')}")
-                print("*" * 90)
-                print("!" * 30 + "   Need to Update Firmware   " + "!" * 30)
-                print("*" * 90)
-                report_step("Need to Update Firmware", "INFO", 55, results_list, f"Need to Update Firmware!! - {firmwareUnitVer}", None, worker, logger)
-                add_text_row(firmware_info_table, f"Need to Update Firmware!! - {firmwareUnitVer}")
-
-            elif (requested_os.lower() not in firmwareWebVer.get('os').lower()) and (latest != firmwareUnitVer):
-                print(f"Your operation system is {requested_os}")
-                print(f"The Unit firmware is {firmwareUnitVer} and New firmware is {latest} for {requested_os}")
-                print("*" * 90)
-                print("!" * 30 + "   Need to Update Firmware   " + "!" * 30)
-                print("*" * 90)
-                report_step("Need to Update Firmware", "INFO", 55, results_list, f"Need to Update Firmware!! - {firmwareUnitVer}", None, worker, logger)
-                add_text_row(firmware_info_table, f"Need to Update Firmware!! - {firmwareUnitVer}")
-            else:
-                print("*" * 90)
-                print("-" * 30 + "  No Need to Update Firmware  " + "-" * 30)
-                print("*" * 90)
-                report_step("No Need to Update Firmware", "INFO", 55, results_list, f"No Need to Update Firmware - {firmwareUnitVer}.", None, worker, logger)
-                add_text_row(firmware_info_table, f"No Need to Update Firmware - {firmwareUnitVer}.")
-            if check_progress(worker): return results_list
-
-            if download:
-                firmware_file = get_latest_file(download_path, device_Model, was_download, latest)
-                report_step("Download Firmware " + firmware_file, "PASS", 70, results_list, "Download Firmware " + firmware_file, None, worker, logger)
-                add_text_row(firmware_info_table, "Download Firmware " + firmware_file)
-                if check_progress(worker): return results_list
-                print(f"The file in {download_path}\\{device_Model} is: {firmware_file}")
-                copy_file = windows_control.copy_file_to_remote(target_ip, user, password, download_path, firmware_file, device_Model, exe_destination_file)
-                if copy_file:
-                    report_step("Copy the download Firmware " + firmware_file + " to the device", "PASS", 75, results_list, "Copy the download Firmware " + firmware_file + " to the device", None, worker, logger)
-                    add_text_row(firmware_info_table, "Copy the download Firmware " + firmware_file + " to the device")
+    try:
+        if  device.connect() and windows_control.connect():
+            device_Model = device.get_idn()[1]
+            serial_number = device.get_idn()[2]
+            firmwareUnitVer = device.get_idn()[3]
+            if check_progress(worker): return serial_number, device_Model, results_list
+            report_step("N90XXB Connected", "PASS", 15, results_list, " ", None, worker, logger)
+            results_list.extend(device.system_full_query())
+            report_step("Get System information", "PASS", 20, results_list, " ", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+            print("\n")
+            output, external_results = device.license_full_query(":SYSTem:LKEY:LIST?")
+            print(output)
+            results_list.extend(external_results)
+            report_step("Keysight License Manager", "PASS", 25, results_list, " ", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+            device.alignment_Now_All(results_list, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+            device.capture_other_screen(results_list, worker, logger)
+            report_step("Screen Shots all Data (Errors, Hardware, LXI, HW_Statistics)", "PASS", 35, results_list, "Done", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+            time.sleep(5)
+            device.open_system_screen()
+            report_step("Open System Information", "PASS", 36, results_list, " ", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+            device.disconnect()
+            windows_control.capture_all_systems(serial_number, results_list, worker, logger)
+            report_step("Screen Shots System Information", "PASS", 40, results_list, "Done", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+            time.sleep(2)
+            print(windows_control.open_license_manager())
+            time.sleep(30)
+            report_step("Open License Window", "PASS", 41, results_list, " ", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+            time.sleep(5)
+            windows_control.capture_all_licenses(serial_number, results_list, worker, logger)
+            report_step("Screen Shots License Information", "PASS", 45, results_list, "Done", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+            url = get_urls(device_Model, load_configFile("url_path"))
+            report_step(f"Url for device {url}", "INFO", 46, results_list, f"Get Url for device  - {url}", None, worker,logger)
+            if url != "No url":
+                add_text_row(firmware_info_table, f"Url for device  - {url}")
+                if check_progress(worker): return serial_number, device_Model, results_list
+                firmwareWebVer = get_keysight_software_details(url)
+                report_step("Latest firmware for device", "INFO", 48, results_list, f"Latest firmware for device - {firmwareWebVer['revision']}", None, worker, logger)
+                add_text_row(firmware_info_table, f"Latest firmware for device - {firmwareWebVer['revision']}")
+                if check_progress(worker): return serial_number, device_Model, results_list
+                latest = get_latest_version_for_os(requested_os, url)
+                add_text_row(firmware_info_table, f"Device OS - {requested_os}")
+                report_step("Latest firmware for device OS", "INFO", 50, results_list, f"Latest firmware for device OS - {latest}", None, worker, logger)
+                add_text_row(firmware_info_table, f"Latest firmware for device OS - {latest}")
+                if check_progress(worker): return serial_number, device_Model, results_list
+                print(f"The latest version for {requested_os} is: {latest}")
+                link, was_download = download_keysight_version(latest, url, get_n90_family(device_Model), download, download_path, download_defult)
+                if was_download:
+                    report_step("link for Download the latest firmware OS", "INFO", 52, results_list, f"Download the latest firmware OS - {link}", None, worker, logger)
+                    add_text_row(firmware_info_table, f"link for Download the latest firmware for OS - {link}")
                 else:
-                    report_step("Firmware " + firmware_file + " is already in the device", "PASS", 75, results_list,"Firmware " + firmware_file + " is already in the device", None, worker, logger)
-                    add_text_row(firmware_info_table, "Firmware " + firmware_file + " is already in the device")
-                if check_progress(worker): return results_list
-                print(f"The firmware {latest} file is in the device: {exe_destination_file}")
-            else:
-                print(f"The firmware {firmwareUnitVer} file is in: {link}")
+                    report_step("Latest firmware OS", "INFO", 52, results_list, f"latest firmware OS - {link}", None, worker, logger)
+                    add_text_row(firmware_info_table, f"Latest firmware for OS - {link}")
+                if check_progress(worker): return serial_number, device_Model, results_list
+                print(f"The firmware {latest} file is in: {link}\\{device_Model}")
 
+                if (firmwareWebVer.get('revision') != firmwareUnitVer) and (
+                        requested_os.lower() in firmwareWebVer.get('os').lower()):
+                    print(f"Your operation system is {requested_os}")
+                    print(f"The Unit firmware is {firmwareUnitVer} and New firmware is {firmwareWebVer.get('revision')}")
+                    print("*" * 90)
+                    print("!" * 30 + "   Need to Update Firmware   " + "!" * 30)
+                    print("*" * 90)
+                    report_step("Need to Update Firmware", "INFO", 55, results_list, f"Need to Update Firmware!! - Device {firmwareUnitVer}", None, worker, logger)
+                    add_text_row(firmware_info_table, f"Need to Update Firmware!! - {firmwareUnitVer}")
+
+                elif (requested_os.lower() not in firmwareWebVer.get('os').lower()) and (latest != firmwareUnitVer):
+                    print(f"Your operation system is {requested_os}")
+                    print(f"The Unit firmware is {firmwareUnitVer} and New firmware is {latest} for {requested_os}")
+                    print("*" * 90)
+                    print("!" * 30 + "   Need to Update Firmware   " + "!" * 30)
+                    print("*" * 90)
+                    report_step("Need to Update Firmware", "INFO", 55, results_list, f"Need to Update Firmware!! - {firmwareUnitVer}", None, worker, logger)
+                    add_text_row(firmware_info_table, f"Need to Update Firmware!! - {firmwareUnitVer}")
+                else:
+                    print("*" * 90)
+                    print("-" * 30 + "  No Need to Update Firmware  " + "-" * 30)
+                    print("*" * 90)
+                    report_step("No Need to Update Firmware", "INFO", 55, results_list, f"No Need to Update Firmware - {firmwareUnitVer}.", None, worker, logger)
+                    add_text_row(firmware_info_table, f"No Need to Update Firmware - {firmwareUnitVer}.")
+                if check_progress(worker): return serial_number, device_Model, results_list
+
+                if download:
+                    firmware_file = get_latest_file(download_path, get_n90_family(device_Model), was_download, latest)
+                    report_step("Download Firmware " + firmware_file, "PASS", 70, results_list, "Download Firmware " + firmware_file, None, worker, logger)
+                    add_text_row(firmware_info_table, "Download Firmware " + firmware_file)
+                    if check_progress(worker): return serial_number, device_Model, results_list
+                    print(f"The file in {download_path}\\{get_n90_family(device_Model)} is: {firmware_file}")
+                    copy_file = windows_control.copy_file_to_remote(target_ip, admin_user, admin_password, download_path, firmware_file, get_n90_family(device_Model), exe_destination_file)
+                    if copy_file:
+                        report_step("Copy the download Firmware " + firmware_file + " to the device", "PASS", 75, results_list, "Copy the download Firmware " + firmware_file + " to the device", None, worker, logger)
+                        add_text_row(firmware_info_table, "Copy the download Firmware " + firmware_file + " to the device")
+                    else:
+                        report_step("Firmware " + firmware_file + " is already in the device", "PASS", 75, results_list,"Firmware " + firmware_file + " is already in the device", None, worker, logger)
+                        add_text_row(firmware_info_table, "Firmware " + firmware_file + " is already in the device")
+                    if check_progress(worker): return serial_number, device_Model, results_list
+                    print(f"The firmware {latest} file is in the device: {exe_destination_file}")
+                else:
+                    print(f"The firmware {firmwareUnitVer} file is in: {link}")
+
+            else:
+                report_step("No Url for this device can't check firmware", "FAIL", 75, results_list,"No Url for this device can't check firmware", None, worker, logger)
+            results_list.append(firmware_info_table)
+            windows_control.minimize_window()
+            windows_control.disable_windows_update_notifications(worker, logger)
+            windows_control.stop_agilent_update_popup(worker, logger)
+            info, update_result = windows_control.main_update_process(results_list, worker, logger)
+            results_list.extend(update_result)
+            report_step("Windows Update Complete", "PASS", 100, results_list, "Windows Update Complete", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
         else:
-            report_step("No Url for this device can't check firmware", "FAIL", 75, results_list,"No Url for this device can't check firmware", None, worker, logger)
-        results_list.append(firmware_info_table)
-        windows_control.minimize_window()
-        info, update_result = windows_control.main_update_process(results_list, worker, logger)
-        results_list.extend(update_result)
-        report_step("Windows Update Complete", "PASS", 100, results_list, "Windows Update Complete", None, worker, logger)
-        if check_progress(worker): return results_list
-    else:
-        report_step("Test Completed", "FAIL", 100, results_list, "Test Completed", None, worker, logger)
-        if check_progress(worker): return results_list
-    return serial_number, device_Model, results_list
+            report_step("Test Completed", "FAIL", 100, results_list, "Test Completed", None, worker, logger)
+            if check_progress(worker): return serial_number, device_Model, results_list
+        return serial_number, device_Model, results_list
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return serial_number, device_Model, results_list
+
+
+def is_n90xxb(model):
+    return bool(re.fullmatch(r"N90\d\dB", model))
+
+def get_n90_family(model):
+
+    model = model.upper().strip()
+    if re.match(r"^N90\d{2}B$", model):
+        return "N90xxB"
+    return None
+
+def xsa_response(target_ip, worker=None, logger=None, timeout=600):
+
+    xsa = N90XXB(target_ip, logger)
+    return device_information(xsa, worker=worker, logger=logger, timeout=timeout)
+
 
 if __name__ == "__main__":
 
