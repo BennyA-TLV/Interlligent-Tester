@@ -973,16 +973,59 @@ class WINconn:
         task_name = "EnableWinRM_ByAutomation"
 
         bat_content = r"""@echo off
-        winrm quickconfig -quiet
-        powershell -ExecutionPolicy Bypass -Command "Enable-PSRemoting -Force"
-        powershell -ExecutionPolicy Bypass -Command "Set-Service WinRM -StartupType Automatic"
-        powershell -ExecutionPolicy Bypass -Command "Start-Service WinRM"
-        powershell -ExecutionPolicy Bypass -Command "Enable-WSManCredSSP -Role Server -Force"
-        winrm set winrm/config/service/auth @{CredSSP="true"}
-        winrm set winrm/config/service @{AllowUnencrypted="true"}
-        winrm set winrm/config/service/auth @{Basic="true"}
-        netsh advfirewall firewall set rule group="Windows Remote Management" new enable=yes
+        setlocal
+
+        set LOG=C:\TEMP\enable_winrm_log.txt
+
+        echo ====================================== > %LOG%
+        echo Starting WinRM Bootstrap >> %LOG%
+        echo ====================================== >> %LOG%
+
+        echo ---- Changing WinRM Policies ---- >> %LOG%
+
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service" /v AllowAutoConfig /t REG_DWORD /d 1 /f >> %LOG% 2>&1
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service" /v AllowBasic /t REG_DWORD /d 1 /f >> %LOG% 2>&1
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service" /v AllowUnencryptedTraffic /t REG_DWORD /d 1 /f >> %LOG% 2>&1
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service" /v DisableRunAs /t REG_DWORD /d 0 /f >> %LOG% 2>&1
+
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service\WinRS" /v AllowRemoteShellAccess /t REG_DWORD /d 1 /f >> %LOG% 2>&1
+
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client" /v AllowBasic /t REG_DWORD /d 1 /f >> %LOG% 2>&1
+        reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client" /v AllowUnencryptedTraffic /t REG_DWORD /d 1 /f >> %LOG% 2>&1
+
+        echo ---- Restarting WinRM Service ---- >> %LOG%
+
+        sc config WinRM start= auto >> %LOG% 2>&1
+        net stop WinRM /y >> %LOG% 2>&1
+        net start WinRM >> %LOG% 2>&1
+
+        echo ---- Creating WinRM Listener ---- >> %LOG%
+
+        winrm delete winrm/config/Listener?Address=*+Transport=HTTP >> %LOG% 2>&1
+        winrm create winrm/config/Listener?Address=*+Transport=HTTP >> %LOG% 2>&1
+
+        echo ---- Configuring WinRM Auth ---- >> %LOG%
+
+        winrm set winrm/config/service/auth @{Basic="true"} >> %LOG% 2>&1
+        winrm set winrm/config/service/auth @{CredSSP="true"} >> %LOG% 2>&1
+        winrm set winrm/config/service @{AllowUnencrypted="true"} >> %LOG% 2>&1
+        winrm set winrm/config/winrs @{AllowRemoteShellAccess="true"} >> %LOG% 2>&1
+
+        echo ---- Firewall ---- >> %LOG%
+
+        netsh advfirewall firewall set rule group="Windows Remote Management" new enable=yes >> %LOG% 2>&1
+        netsh advfirewall firewall add rule name="WinRM 5985" dir=in action=allow protocol=TCP localport=5985 >> %LOG% 2>&1
+
+        echo ---- Verify ---- >> %LOG%
+
+        winrm enumerate winrm/config/listener >> %LOG% 2>&1
+        netstat -ano | find ":5985" >> %LOG% 2>&1
+
         echo DONE > C:\TEMP\enable_winrm_done.txt
+        echo Bootstrap Completed >> %LOG%
+
+        endlocal
+        exit /b 0
         """
 
         print(" > Bootstrapping WinRM using remote Scheduled Task...")
@@ -1035,14 +1078,16 @@ class WINconn:
                 f'/F'
             )
             result = subprocess.run(create_cmd, shell=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-
+            print(result.stdout)
+            print(result.stderr)
             if result.returncode != 0:
                 print(" > Failed to create scheduled task")
                 print(result.stdout)
                 print(result.stderr)
                 return False
             result = subprocess.run(run_cmd, shell=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-
+            print(result.stdout)
+            print(result.stderr)
             if result.returncode != 0:
                 print(" > Failed to run scheduled task")
                 print(result.stdout)
@@ -1071,7 +1116,14 @@ class WINconn:
 
                 time.sleep(5)
 
+            log_file_unc = rf"{remote_temp_unc}\enable_winrm_log.txt"
+
             print(" > Timeout: WinRM did not open")
+            if os.path.exists(log_file_unc):
+                print(" > Bootstrap log:")
+                with open(log_file_unc, "r", encoding="utf-8", errors="ignore") as f:
+                    print(f.read())
+
             return False
 
         except Exception as e:
