@@ -1,6 +1,7 @@
 import pandas as pd
 from pathlib import Path
 from email.message import EmailMessage
+import win32com.client
 import subprocess
 import csv
 import tomllib
@@ -212,7 +213,7 @@ def load_email_recipients(csv_file, notify_type):
                 recipients.append(email)
     return recipients
 
-def send_test_started_email(recipients, device_type, slot, ip):
+def send_test_started_email_gmail(recipients, device_type, slot, ip):
     if not recipients:
         return
 
@@ -255,7 +256,7 @@ def send_test_started_email(recipients, device_type, slot, ip):
         server.login(sender_email, app_password)
         server.send_message(msg)
 
-def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_status, pdf_file):
+def send_test_ended_email_gmail(recipients, device_name, device_type, slot, ip, final_status, pdf_file):
 
     if not recipients:
         return
@@ -312,6 +313,178 @@ def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_
         server.starttls()
         server.login(sender_email, app_password)
         server.send_message(msg)
+
+# Send email using the installed Microsoft Outlook.
+def send_outlook_email(subject, html_body, recipients, attachment=None):
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        mail = outlook.CreateItem(0)
+
+        mail.To = ";".join(recipients)
+        mail.Subject = subject
+        mail.HTMLBody = html_body
+
+        if attachment and os.path.exists(attachment):
+            mail.Attachments.Add(os.path.abspath(attachment))
+
+        mail.Send()
+
+        print("Outlook email window opened successfully.")
+
+    except Exception as e:
+        print(f"Failed to create Outlook email: {e}")
+
+def send_test_started_email(recipients, device_type, slot, ip):
+
+    if not recipients:
+        return
+
+    subject = f"TEST STARTED - {device_type}"
+
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial;">
+    <div style="max-width:650px;
+                margin:auto;
+                border:1px solid #cccccc;
+                border-radius:10px;
+                padding:25px;">
+    <h2 style="color:#1f4e79;">
+        Intelligent Tester
+    </h2>
+    <h3 style="color:#0f766e;">
+        Test Started
+    </h3>
+    <p>
+    A new automatic test has started.
+    </p>
+    <table style="width:100%; border-collapse:collapse;">
+        <tr>
+            <td width="35%"><b>Device Type</b></td>
+            <td>{device_type}</td>
+        </tr>
+        <tr>
+            <td><b>Slot</b></td>
+            <td>{slot}</td>
+        </tr>
+        <tr>
+            <td><b>IP Address</b></td>
+            <td>{ip}</td>
+        </tr>
+        <tr>
+            <td><b>Start Time</b></td>
+            <td>{time.strftime("%Y-%m-%d %H:%M:%S")}</td>
+        </tr>
+    </table>
+    <br>
+    <div style="
+        background:#2563eb;
+        color:white;
+        padding:12px;
+        border-radius:6px;
+        text-align:center;
+        font-size:18px;
+        font-weight:bold;">
+        RUNNING
+    </div>
+    <br>
+    <small style="color:gray;">
+    This message was generated automatically by Intelligent Tester.
+    </small>
+    </div>
+    </body>
+    </html>
+    """
+
+    send_outlook_email(
+        subject,
+        html_body,
+        recipients
+    )
+
+def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_status, pdf_file):
+
+    if not recipients:
+        return
+
+    device_name = device_name or "Unknown"
+    device_type = device_type or "Unknown"
+
+    subject = f"TEST {final_status} - {device_type} - {device_name}"
+
+    if final_status.upper() == "PASSED":
+        color = "#16a34a"
+    elif final_status.upper() == "FAILED":
+        color = "#dc2626"
+    else:
+        color = "#6b7280"
+
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial;">
+    <div style="max-width:650px;
+                margin:auto;
+                border:1px solid #cccccc;
+                border-radius:10px;
+                padding:25px;">
+    <h2 style="color:#1f4e79;">
+        Intelligent Tester
+    </h2>
+    <h3>
+        Test Finished
+    </h3>
+    <p>
+    The automatic test has completed successfully.
+    The report is attached.
+    </p>
+    <table style="width:100%; border-collapse:collapse;">
+        <tr>
+            <td width="35%"><b>Device Name</b></td>
+            <td>{device_name}</td>
+        </tr>
+        <tr>
+            <td><b>Device Type</b></td>
+            <td>{device_type}</td>
+        </tr>
+        <tr>
+            <td><b>Slot</b></td>
+            <td>{slot}</td>
+        </tr>
+        <tr>
+            <td><b>IP Address</b></td>
+            <td>{ip}</td>
+        </tr>
+        <tr>
+            <td><b>Finished Time</b></td>
+            <td>{time.strftime("%Y-%m-%d %H:%M:%S")}</td>
+        </tr>
+    </table>
+    <br>
+    <div style="
+        background:{color};
+        color:white;
+        padding:14px;
+        border-radius:6px;
+        text-align:center;
+        font-size:22px;
+        font-weight:bold;">
+        {final_status}
+    </div>
+    <br>
+    <small style="color:gray;">
+    This message was generated automatically by Intelligent Tester.
+    </small>
+    </div>
+    </body>
+    </html>
+    """
+
+    send_outlook_email(
+        subject,
+        html_body,
+        recipients,
+        pdf_file
+    )
 
 def create_test_logger(row_index):
 
@@ -447,3 +620,44 @@ def wait_for_ping(ip, worker=None, logger=None, timeout=300, interval=5):
     report_step(f"Timeout: device {ip} did not reply to ping", "FAIL", 1, results_list, " ", None, worker, logger)
 
     return False
+
+def main():
+
+    recipients = [
+        "automation@int-rf.com",
+         "Benny.a@tlv-mm.com"
+    ]
+
+    device_name = "N9041B"
+    device_type = "Signal Analyzer"
+    slot = "SLOT1"
+    ip = "192.168.1.100"
+
+    print("Sending START email...")
+    send_test_started_email(
+        recipients,
+        device_type,
+        slot,
+        ip
+    )
+
+    input("Press ENTER to send END email...")
+
+    pdf_file = r"C:\Temp\TestReport.pdf"
+
+    print("Sending END email...")
+    send_test_ended_email(
+        recipients,
+        device_name,
+        device_type,
+        slot,
+        ip,
+        "PASSED",
+        pdf_file
+    )
+
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()
