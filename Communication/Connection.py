@@ -406,7 +406,7 @@ def send_outlook_email(subject, html_body, recipients, attachment=None):
     except Exception as e:
         print(f"Failed to create Outlook email: {e}")
 
-def send_test_started_email(recipients, device_type, slot, ip):
+def send_test_started_email(recipients, device_type, slot, ip, is_new_device):
 
     if not recipients:
         return
@@ -474,7 +474,7 @@ def send_test_started_email(recipients, device_type, slot, ip):
         recipients
     )
 
-def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_status, pdf_file):
+def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_status, pdf_file, is_new_device):
 
     if not recipients:
         return

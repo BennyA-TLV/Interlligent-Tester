@@ -20,70 +20,6 @@ import threading
 import os
 import sys
 
-class FirmwareQuestionDialog(QDialog):
-
-    def __init__(self, message):
-        super().__init__()
-
-        self.remaining_seconds = 300
-
-        self.setWindowTitle("Firmware Installation")
-        self.setMinimumSize(520, 260)
-
-        layout = QVBoxLayout(self)
-
-        self.message_label = QLabel(message)
-        self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.message_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
-
-        self.timer_label = QLabel("05:00")
-        self.timer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.timer_label.setFont(QFont("Arial", 36, QFont.Weight.Bold))
-        self.timer_label.setStyleSheet("""
-            QLabel {
-                color: red;
-                background-color: #fff0f0;
-                border: 2px solid red;
-                border-radius: 12px;
-                padding: 15px;
-            }
-        """)
-
-        buttons_layout = QHBoxLayout()
-
-        yes_btn = QPushButton("YES")
-        no_btn = QPushButton("NO")
-
-        yes_btn.clicked.connect(self.accept)
-        no_btn.clicked.connect(self.reject)
-
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(yes_btn)
-        buttons_layout.addWidget(no_btn)
-        buttons_layout.addStretch()
-
-        layout.addWidget(self.message_label)
-        layout.addWidget(self.timer_label)
-        layout.addLayout(buttons_layout)
-
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_timer)
-        self.timer.start(1000)
-
-    def update_timer(self):
-
-        self.remaining_seconds -= 1
-
-        minutes = self.remaining_seconds // 60
-        seconds = self.remaining_seconds % 60
-
-        self.timer_label.setText(f"{minutes:02d}:{seconds:02d}")
-
-        if self.remaining_seconds <= 0:
-            self.timer.stop()
-            self.reject()
-
-
 class LiveReportDialog(QDialog):
 
     def __init__(self, title):
@@ -179,12 +115,20 @@ class TestWorker(QThread):
             row_index = task["index"]
             self.current_row_index = row_index
             ip = task["ip"]
+            run_win_update = task.get("win_update", True)
+            run_firmware_update = task.get("firmware_update", True)
+            is_new_device = task.get("new_device", False)
             serialNumber = "Unknown_SN"
             deviceModel = "Unknown_Unit"
             self.row_started.emit(row_index)
             recipients = load_email_recipients(Path(load_configFile("email_path"), "Email.csv"), "start")
             self.test_failed = False
             device_logger, log_file = create_test_logger(row_index)
+            device_logger.info("Advanced options | "
+                f"Win Update={run_win_update} | "
+                f"Firmware Update={run_firmware_update} | "
+                f"New Device={is_new_device}"
+            )
             device_logger.info(f"Test started | Slot={row_index + 1} | IP={ip}")
             try:
                 ping_result = wait_for_ping(ip, worker=self, logger=device_logger)
@@ -197,13 +141,13 @@ class TestWorker(QThread):
                     if deviceModelFamily.startswith("E50"):
                         serialNumber, deviceModel, result = network_response(ip, worker=self, logger=device_logger)
                     self.device_info_update.emit(row_index, deviceModel, serialNumber)
-                    send_test_started_email(recipients, deviceModel, row_index + 1, ip)
+                    send_test_started_email(recipients, deviceModel, row_index + 1, ip, is_new_device)
                     test_function = self.get_test_function(deviceModel)
 
                     if test_function is None:
                         raise Exception(f"Unsupported unit: {deviceModel}")
 
-                    serialNumber, deviceModel, result = test_function(ip, worker=self, logger=device_logger)
+                    serialNumber, deviceModel, result = test_function(ip, worker=self, logger=device_logger, run_win_update=run_win_update, run_firmware_update=run_firmware_update)
 
                 if self.test_failed:
                     final_status = "FAILED"
@@ -221,7 +165,7 @@ class TestWorker(QThread):
                 device_logger.info(f"Serial Number detected: {serialNumber}")
                 device_logger.info(f"Unit: {deviceModel}")
                 device_logger.info(f"Test finished | Result={final_status}")
-                send_test_ended_email(recipients, serialNumber, deviceModel, row_index + 1, ip, final_status, pdf_file)
+                send_test_ended_email(recipients, serialNumber, deviceModel, row_index + 1, ip, final_status, pdf_file, is_new_device)
 
                 self.create_pdf_report(filename=pdf_file, slot=row_index + 1, ip=ip, unit=deviceModel, serial_number= serialNumber, final_status=final_status, results=result)
                 self.row_finished.emit(row_index, final_status, pdf_file)
@@ -502,6 +446,119 @@ class TestWorker(QThread):
 
         return None
 
+class AdvancedOptionsDialog(QDialog):
+
+    def __init__(
+            self,
+            win_update=True,
+            firmware_update=True,
+            new_device=False,
+            parent=None
+    ):
+        super().__init__(parent)
+
+        self.setWindowTitle("Advanced Options")
+        self.setFixedSize(320, 230)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(25, 20, 25, 20)
+        main_layout.setSpacing(15)
+
+        title = QLabel("Select Test Options")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+
+        self.win_update_checkbox = QCheckBox("Win Update")
+        self.firmware_update_checkbox = QCheckBox("Firmware Update")
+        self.new_device_checkbox = QCheckBox("New Device")
+
+        self.win_update_checkbox.setChecked(win_update)
+        self.firmware_update_checkbox.setChecked(firmware_update)
+        self.new_device_checkbox.setChecked(new_device)
+
+        green_icon = resource_path("Icon/green_ok.png").replace("\\", "/")
+
+        checkbox_style = f"""
+            QCheckBox {{
+                font-size: 13px;
+                font-weight: bold;
+                spacing: 10px;
+                padding: 4px;
+            }}
+
+            QCheckBox::indicator {{
+                width: 20px;
+                height: 20px;
+                border: 2px solid #808080;
+                border-radius: 4px;
+                background-color: white;
+            }}
+
+            QCheckBox::indicator:checked {{
+                image: url({green_icon});
+                background-color: white;
+                border: 2px solid #28a745;
+            }}
+        """
+
+        self.win_update_checkbox.setStyleSheet(checkbox_style)
+        self.firmware_update_checkbox.setStyleSheet(checkbox_style)
+        self.new_device_checkbox.setStyleSheet(checkbox_style)
+
+        buttons_layout = QHBoxLayout()
+
+        save_button = QPushButton("Save")
+        cancel_button = QPushButton("Cancel")
+
+        save_button.setFixedHeight(36)
+        cancel_button.setFixedHeight(36)
+
+        save_button.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border-radius: 7px;
+                font-weight: bold;
+            }
+
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+
+        cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                border-radius: 7px;
+                font-weight: bold;
+            }
+
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+        """)
+
+        save_button.clicked.connect(self.accept)
+        cancel_button.clicked.connect(self.reject)
+
+        buttons_layout.addWidget(save_button)
+        buttons_layout.addWidget(cancel_button)
+
+        main_layout.addWidget(title)
+        main_layout.addWidget(self.win_update_checkbox)
+        main_layout.addWidget(self.firmware_update_checkbox)
+        main_layout.addWidget(self.new_device_checkbox)
+        main_layout.addStretch()
+        main_layout.addLayout(buttons_layout)
+
+    def get_options(self):
+
+        return {
+            "win_update": self.win_update_checkbox.isChecked(),
+            "firmware_update": self.firmware_update_checkbox.isChecked(),
+            "new_device": self.new_device_checkbox.isChecked()
+        }
 
 class MainWindow(QWidget):
 
@@ -511,12 +568,50 @@ class MainWindow(QWidget):
 
         self.setWindowTitle("Intelligent Tester")
         self.setWindowIcon(QIcon("Icon/IntelligentTester.ico"))
-        self.setMinimumSize(1000, 600)
+        self.setMinimumSize(1300, 600)
         self.rows = []
         self.user_stopped = False
         self.is_closing = False
         self.live_reports = {}
 
+        self.options_button_style = """
+                            QPushButton {
+                                background-color: #475569;
+                                color: white;
+                                border-radius: 8px;
+                                border: 2px solid #475569;
+                                font-weight: bold;
+                            }
+
+                            QPushButton:hover {
+                                background-color: #334155;
+                            }
+
+                            QPushButton:disabled {
+                                background-color: #CBD5E1;
+                                border: 2px solid #CBD5E1;
+                                color: white;
+                            }
+                            """
+        self.options_button_modified_style = """
+                            QPushButton {
+                                background-color: #475569;
+                                color: white;
+                                border-radius: 8px;
+                                border: 2px solid #F59E0B;
+                                font-weight: bold;
+                            }
+
+                            QPushButton:hover {
+                                background-color: #334155;
+                            }
+
+                            QPushButton:disabled {
+                                background-color: #CBD5E1;
+                                border: 2px solid #FCD34D;
+                                color: white;
+                            }
+                            """
         self.init_ui()
 
         self.worker = TestWorker()
@@ -588,6 +683,9 @@ class MainWindow(QWidget):
         progress_header = QLabel("Progress")
         progress_header.setFixedWidth(150)
 
+        advanced_options_header = QLabel("Advanced Options")
+        advanced_options_header.setFixedWidth(180)
+
         self.report_header = QLabel("Report")
         self.report_header.setFixedWidth(100)
 
@@ -598,6 +696,7 @@ class MainWindow(QWidget):
             unit_header,
             status_header,
             progress_header,
+            advanced_options_header,
             self.report_header
         ]:
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -627,6 +726,7 @@ class MainWindow(QWidget):
         table_header_layout.addWidget(unit_header)
         table_header_layout.addWidget(status_header)
         table_header_layout.addWidget(progress_header)
+        table_header_layout.addWidget(advanced_options_header)
         table_header_layout.addWidget(self.report_header)
 
         self.main_layout.addLayout(table_header_layout)
@@ -686,6 +786,12 @@ class MainWindow(QWidget):
                 }
             """)
 
+            advanced_options_btn = QPushButton("⚙ Advanced")
+            advanced_options_btn.setFixedSize(175, 36)
+            advanced_options_btn.setEnabled(False)
+            advanced_options_btn.setStyleSheet(self.options_button_style)
+            advanced_options_btn.clicked.connect(lambda _, idx=i: self.open_advanced_options(idx))
+
             report_btn = QPushButton("📄 Report")
             report_btn.setFixedSize(100, 36)
             report_btn.setVisible(False)
@@ -710,6 +816,7 @@ class MainWindow(QWidget):
             row_layout.addWidget(unit_label)
             row_layout.addWidget(status_label)
             row_layout.addWidget(progress_bar)
+            row_layout.addWidget(advanced_options_btn)
             row_layout.addWidget(report_btn)
 
             self.main_layout.addLayout(row_layout)
@@ -717,14 +824,18 @@ class MainWindow(QWidget):
             self.rows.append({
                 "checkbox": cb,
                 "slot_label": slot_label,
-                "ip": f"10.1.44.{200 + i}",
-                #"ip": f"192.168.1.{200 + i}",
+                #"ip": f"10.1.44.{200 + i}",
+                "ip": f"192.168.1.{200 + i}",
                 "unit_label": unit_label,
                 "sn_label": sn_label,
                 "unit": "----",
                 "serial_number": "----",
                 "status": status_label,
                 "progress": progress_bar,
+                "advanced_options_btn": advanced_options_btn,
+                "win_update": True,
+                "firmware_update": True,
+                "new_device": False,
                 "report_btn": report_btn,
                 "report_text": "",
                 "pdf_file": "",
@@ -732,7 +843,7 @@ class MainWindow(QWidget):
                 "is_queued": False,
                 "is_running": False
             })
-
+            self.update_advanced_button_text(i)
 
         self.main_layout.addStretch()
         buttons_layout = QHBoxLayout()
@@ -775,9 +886,15 @@ class MainWindow(QWidget):
 
         row = self.rows[index]
         if state == 2:
+            row["advanced_options_btn"].setEnabled(True)
             if self.is_test_running():
                 self.add_single_row_to_queue(index)
         else:
+            row["advanced_options_btn"].setEnabled(False)
+            row["win_update"] = True
+            row["firmware_update"] = True
+            row["new_device"] = False
+            self.update_advanced_button_text(index)
             row["progress"].setValue(0)
             row["report_btn"].setVisible(False)
             self.report_header.hide()
@@ -808,13 +925,17 @@ class MainWindow(QWidget):
         task_added = self.worker.add_task({
             "index": index,
             "ip": ip,
-            "unit": "Auto"
+            "unit": "Auto",
+            "win_update": row["win_update"],
+            "firmware_update": row["firmware_update"],
+            "new_device": row["new_device"]
         })
         row["progress"].setValue(0)
 
         if task_added:
             row["is_queued"] = True
             row["checkbox"].setEnabled(False)
+            row["advanced_options_btn"].setEnabled(False)
             row["status"].setText("QUEUED")
             row["status"].setStyleSheet("""
                 QLabel {background-color: #ffc107; color: white; padding: 5px; border-radius: 8px; font-weight: bold;}
@@ -882,6 +1003,7 @@ class MainWindow(QWidget):
         row = self.rows[index]
         row["is_queued"] = False
         row["is_running"] = False
+        row["advanced_options_btn"].setEnabled( row["checkbox"].isChecked())
         row["checkbox"].setEnabled(True)
         if row["is_finished"]:
             return
@@ -898,6 +1020,7 @@ class MainWindow(QWidget):
         row["is_finished"] = True
         row["is_queued"] = False
         row["is_running"] = False
+        row["advanced_options_btn"].setEnabled(row["checkbox"].isChecked())
         row["report_btn"].setVisible(True)
         self.report_header.show()
         row["progress"].setValue(100)
@@ -968,6 +1091,7 @@ class MainWindow(QWidget):
             row["is_queued"] = False
             row["is_running"] = False
             row["checkbox"].setEnabled(True)
+            row["advanced_options_btn"].setEnabled(True)
 
             if row["is_finished"]:
                 continue
@@ -1063,6 +1187,65 @@ class MainWindow(QWidget):
         label.setStyleSheet("""QLabel {background-color: #f2f6fb; color: #1f2937; border: 1px solid #cbd5e1; border-radius: 8px;}""")
 
         return label
+
+    def open_advanced_options(self, index):
+        row = self.rows[index]
+        if row["is_running"] or row["is_queued"]:
+            QMessageBox.warning(
+                self,
+                "Options Locked",
+                "Options cannot be changed while the test is running."
+            )
+            return
+
+        dialog = AdvancedOptionsDialog(
+            win_update=row["win_update"],
+            firmware_update=row["firmware_update"],
+            new_device=row["new_device"],
+            parent=self
+        )
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            options = dialog.get_options()
+
+            row["win_update"] = options["win_update"]
+            row["firmware_update"] = options["firmware_update"]
+            row["new_device"] = options["new_device"]
+
+            self.update_advanced_button_text(index)
+
+    def update_advanced_button_text(self, index):
+
+        row = self.rows[index]
+
+        is_default = (
+                row["win_update"] and
+                row["firmware_update"] and
+                not row["new_device"]
+        )
+
+        if is_default:
+            row["advanced_options_btn"].setText("⚙ Options")
+            row["advanced_options_btn"].setStyleSheet(self.options_button_style)
+        else:
+            row["advanced_options_btn"].setText("⚙ Options (Modified)")
+            row["advanced_options_btn"].setStyleSheet(self.options_button_modified_style)
+
+        tooltip = []
+
+        tooltip.append(
+            f"WIN UPDATE: {'ON' if row['win_update'] else 'OFF'}"
+        )
+
+        tooltip.append(
+            f"FIRMWARE UPDATE: {'ON' if row['firmware_update'] else 'OFF'}"
+        )
+
+        tooltip.append(
+            f"NEW DEVICE: {'ON' if row['new_device'] else 'OFF'}"
+        )
+
+        row["advanced_options_btn"].setToolTip("\n".join(tooltip))
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
