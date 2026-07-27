@@ -836,8 +836,8 @@ class MainWindow(QWidget):
             self.rows.append({
                 "checkbox": cb,
                 "slot_label": slot_label,
-                #"ip": f"10.1.44.{200 + i}",
-                "ip": f"192.168.1.{200 + i}",
+                "ip": f"10.1.44.{200 + i}",
+                #"ip": f"192.168.1.{200 + i}",
                 "unit_label": unit_label,
                 "sn_label": sn_label,
                 "unit": "----",
