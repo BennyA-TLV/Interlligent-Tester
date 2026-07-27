@@ -1031,8 +1031,10 @@ class WINconn:
         all_captured = False
         page_count = 1
         steps = 21
+        capture_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        screenshot_name = f"{serial_number}_{capture_id}"
 
-        prev_img = self.screenshot("License", serial_number, "License Manager", page_count)
+        prev_img = self.screenshot("License", screenshot_name, "License Manager", page_count)
         report_step(name=f"License ScreenShot #N{page_count}", status="INFO", progress=40, results_list=results_list, value=f"License ScreenShot #N{page_count}", image_path=prev_img, worker=worker, logger=logger)
 
 
@@ -1045,7 +1047,7 @@ class WINconn:
 
             page_count += 1
             steps = 12
-            curr_img = self.screenshot("License", serial_number, "License Manager", page_count)
+            curr_img = self.screenshot("License", screenshot_name, "License Manager", page_count)
             if self.is_last_page(prev_img, curr_img):
                 print(" !!! Reached the end of the list (Images are identical).")
                 if os.path.exists(curr_img):
@@ -1053,7 +1055,7 @@ class WINconn:
                 all_captured = True
             else:
                 prev_img = curr_img
-                report_step(name=f"License ScreenShot #N{page_count}", status="INFO", progress=40,results_list=results_list, value=f"License ScreenShot #N{page_count}", image_path=curr_img,worker=worker, logger=logger)
+                report_step(name=f"License ScreenShot {screenshot_name}_#N{page_count}", status="INFO", progress=40,results_list=results_list, value=f"License ScreenShot #N{page_count}", image_path=curr_img,worker=worker, logger=logger)
 
         print("Done. All licenses captured.")
 
@@ -1062,10 +1064,12 @@ class WINconn:
         all_captured = False
         page_count = 1
         steps = 20
+        capture_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        screenshot_name = f"{serial_number}_{capture_id}"
 
         print(" > System Information All ScreenShots .....")
         self.press_key_remote("UP", 60)
-        prev_img = self.screenshot("System", serial_number,"SYSTem", page_count)
+        prev_img = self.screenshot("System", screenshot_name,"SYSTem", page_count)
         report_step(name=f"System Information ScreenShot #N{page_count}", status="INFO", progress=40, results_list=results_list, value=f"System Information ScreenShot #N{page_count}", image_path=prev_img, worker=worker, logger=logger)
         while not all_captured:
             print(f" > Processing page {page_count}...")
@@ -1076,7 +1080,7 @@ class WINconn:
             time.sleep(5)
 
             page_count += 1
-            curr_img = self.screenshot("System", serial_number, "SYSTem", page_count)
+            curr_img = self.screenshot("System", screenshot_name, "SYSTem", page_count)
 
             if self.is_last_page(prev_img, curr_img):
                 print(" !!! Reached the end of the list (Images are identical).")
@@ -1085,7 +1089,7 @@ class WINconn:
                 all_captured = True
             else:
                 prev_img = curr_img
-                report_step(name=f"System Information ScreenShot #N{page_count}", status="INFO", progress=40,results_list=results_list, value=f"System Information ScreenShot #N{page_count}", image_path=curr_img, worker=worker, logger=logger)
+                report_step(name=f"System Information ScreenShot {capture_id}_#N{page_count}", status="INFO", progress=40,results_list=results_list, value=f"System Information ScreenShot #N{page_count}", image_path=curr_img, worker=worker, logger=logger)
 
         print("Done. All system information captured.")
 
