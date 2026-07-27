@@ -786,11 +786,23 @@ class MainWindow(QWidget):
                 }
             """)
 
-            advanced_options_btn = QPushButton("⚙ Advanced")
+            advanced_options_btn = QPushButton("⚙ Options")
             advanced_options_btn.setFixedSize(175, 36)
             advanced_options_btn.setEnabled(False)
             advanced_options_btn.setStyleSheet(self.options_button_style)
             advanced_options_btn.clicked.connect(lambda _, idx=i: self.open_advanced_options(idx))
+
+            badge = QLabel(advanced_options_btn)
+            badge.setFixedSize(10, 10)
+            badge.setStyleSheet("""
+            QLabel {
+                background-color: #F59E0B;
+                border: 1px solid white;
+                border-radius: 5px;
+            }
+            """)
+            badge.move(advanced_options_btn.width() - 14, 4)
+            badge.hide()
 
             report_btn = QPushButton("📄 Report")
             report_btn.setFixedSize(100, 36)
@@ -833,6 +845,7 @@ class MainWindow(QWidget):
                 "status": status_label,
                 "progress": progress_bar,
                 "advanced_options_btn": advanced_options_btn,
+                "advanced_badge": badge,
                 "win_update": True,
                 "firmware_update": True,
                 "new_device": False,
@@ -1227,25 +1240,11 @@ class MainWindow(QWidget):
         if is_default:
             row["advanced_options_btn"].setText("⚙ Options")
             row["advanced_options_btn"].setStyleSheet(self.options_button_style)
+            row["advanced_badge"].hide()
         else:
-            row["advanced_options_btn"].setText("⚙ Options (Modified)")
+            row["advanced_options_btn"].setText("⚙ Options")
             row["advanced_options_btn"].setStyleSheet(self.options_button_modified_style)
-
-        tooltip = []
-
-        tooltip.append(
-            f"WIN UPDATE: {'ON' if row['win_update'] else 'OFF'}"
-        )
-
-        tooltip.append(
-            f"FIRMWARE UPDATE: {'ON' if row['firmware_update'] else 'OFF'}"
-        )
-
-        tooltip.append(
-            f"NEW DEVICE: {'ON' if row['new_device'] else 'OFF'}"
-        )
-
-        row["advanced_options_btn"].setToolTip("\n".join(tooltip))
+            row["advanced_badge"].show()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

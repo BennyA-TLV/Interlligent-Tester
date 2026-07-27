@@ -207,24 +207,24 @@ def N90XXB_System_Test(target_ip,worker=None, logger=None, run_win_update=True, 
             if check_progress(worker): return serial_number, device_Model, results_list
             device.alignment_Now_All(results_list, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
-            #device.capture_other_screen(results_list, worker, logger)
+            device.capture_other_screen(results_list, worker, logger)
             report_step("Screen Shots all Data (Errors, Hardware, LXI, HW_Statistics)", "PASS", 35, results_list, "Done", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             time.sleep(5)
-            #device.open_system_screen()
+            device.open_system_screen()
             report_step("Open System Information", "PASS", 36, results_list, " ", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             device.disconnect()
-            #windows_control.capture_all_systems(serial_number, results_list, worker, logger)
+            windows_control.capture_all_systems(serial_number, results_list, worker, logger)
             report_step("Screen Shots System Information", "PASS", 40, results_list, "Done", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             time.sleep(2)
-            #print(windows_control.open_license_manager())
+            print(windows_control.open_license_manager())
             time.sleep(30)
             report_step("Open License Window", "PASS", 41, results_list, " ", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             time.sleep(5)
-            #windows_control.capture_all_licenses(serial_number, results_list, worker, logger)
+            windows_control.capture_all_licenses(serial_number, results_list, worker, logger)
             report_step("Screen Shots License Information", "PASS", 45, results_list, "Done", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             url = get_urls(device_Model, load_configFile("url_path"))
