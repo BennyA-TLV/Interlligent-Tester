@@ -11,7 +11,7 @@ from Communication.Connection import *
     # The get option descriptions function
     # The disconnect function
 
-class AnalyzerConn:
+class SignalAnalyzerConn:
 
     # The init function that contains all the parameters of the class.
     # Option_descriptions.csv file that in files folder contain all the descriptions for the data we collect

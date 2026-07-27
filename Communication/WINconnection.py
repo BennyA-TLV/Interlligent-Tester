@@ -90,22 +90,45 @@ class WINconn:
     def disconnect(self):
         self.session = None
 
-    """def connect(self):
-        try:
-            self.session = winrm.Session(
-                self.target_ip,
-                auth=(self.username, self.password),
-                transport='credssp',
-                server_cert_validation='ignore'
+    def check_password(self, username, passwords):
+        for password in passwords:
+            print(f"Trying SMB login: {username} / {password}")
+
+            cmd = rf'net use \\{self.target_ip}\C$ {password} /user:{username} /persistent:no'
+
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
-            result = self.session.run_cmd('hostname')
-            print(f"--- Connection established to {self.target_ip} using CredSSP ---")
-            return True
-        except Exception as e:
-            print(f"Connection Failed: {e}")
-            self.session = None
-            return False
-"""
+
+            output = (result.stdout or "") + (result.stderr or "")
+
+            subprocess.run(
+                rf'net use \\{self.target_ip}\C$ /delete /y',
+                shell=True,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result.returncode == 0:
+                print(f"Password found: {password}")
+                self.username = username
+                self.password = password
+                return password
+
+            if "System error 5" in output or "Access is denied" in output:
+                print(f"Password is correct but user has no C$ admin access: {username} / {password}")
+                return password
+
+            print(output.strip())
+
+        print(f"No {username} password worked")
+        return None
+
     # The check Windows updates function - operat no the remote device getting the KB list in 180 second
     def check_updates(self):
         if not self.session:
@@ -437,7 +460,7 @@ class WINconn:
 
 
     # The open the license manger function - operat no the remote device opening the license manger
-    def open_license_manager(self):
+    def open_license_manager(self, timeout=60):
         if not self.session: self.connect()
 
         check_user = self.session.run_ps("(Get-CimInstance Win32_ComputerSystem).UserName")
@@ -465,12 +488,201 @@ class WINconn:
         )
 
         print(f" > Launching License Manager for {current_user}...")
-        self.session.run_ps(reg_cmd)
+        #self.session.run_ps(reg_cmd)
+        #time.sleep(10)
 
-        time.sleep(10)
-        self.session.run_ps(f"Unregister-ScheduledTask -TaskName '{task_name}' -Confirm:$false -ErrorAction SilentlyContinue")
+        result = self.session.run_ps(reg_cmd)
 
-        return f"Task triggered for {current_user}"
+        if result.status_code != 0:
+            error = result.std_err.decode(errors="ignore").strip()
+            return False, f"Failed to start scheduled task: {error}"
+
+        try:
+            ready, message = self.wait_for_license_manager_window(timeout=timeout)
+            return ready, message
+        finally:
+            self.session.run_ps(f"Unregister-ScheduledTask -TaskName '{task_name}' -Confirm:$false -ErrorAction SilentlyContinue")
+
+        #return f"Task triggered for {current_user}"
+
+    def wait_for_license_manager_window(self, timeout=60, poll_interval=2, stable_checks_required=5):
+
+        start_time = time.time()
+        stable_checks = 0
+        previous_window_info = None
+
+        check_window_ps = r"""
+        Add-Type @"
+        using System;
+        using System.Runtime.InteropServices;
+
+        public static class Win32Window
+        {
+            [DllImport("user32.dll")]
+            public static extern bool IsWindowVisible(IntPtr hWnd);
+
+            [DllImport("user32.dll")]
+            public static extern bool GetWindowRect(
+                IntPtr hWnd,
+                out RECT rect
+            );
+
+            public struct RECT
+            {
+                public int Left;
+                public int Top;
+                public int Right;
+                public int Bottom;
+            }
+        }
+    "@
+
+        $process = Get-Process -Name "KeysightLicenseManager" `
+            -ErrorAction SilentlyContinue |
+            Where-Object { $_.MainWindowHandle -ne 0 } |
+            Select-Object -First 1
+
+        if (-not $process)
+        {
+            Write-Output "NOT_FOUND"
+            exit
+        }
+
+        $handle = $process.MainWindowHandle
+        $visible = [Win32Window]::IsWindowVisible($handle)
+
+        $rect = New-Object Win32Window+RECT
+        $rectResult = [Win32Window]::GetWindowRect(
+            $handle,
+            [ref]$rect
+        )
+
+        if ($rectResult)
+        {
+            $width = $rect.Right - $rect.Left
+            $height = $rect.Bottom - $rect.Top
+        }
+        else
+        {
+            $width = 0
+            $height = 0
+        }
+
+        $result = [PSCustomObject]@{
+            ProcessId = $process.Id
+            Title = $process.MainWindowTitle
+            Handle = $handle.ToInt64()
+            Responding = $process.Responding
+            Visible = $visible
+            Left = $rect.Left
+            Top = $rect.Top
+            Width = $width
+            Height = $height
+        }
+
+        $result | ConvertTo-Json -Compress
+        """
+
+        while time.time() - start_time < timeout:
+            result = self.session.run_ps(check_window_ps)
+
+            output = result.std_out.decode(
+                errors="ignore"
+            ).strip()
+
+            if not output or output == "NOT_FOUND":
+                print(" > Waiting for License Manager process/window...")
+                stable_checks = 0
+                previous_window_info = None
+                time.sleep(poll_interval)
+                continue
+
+            try:
+                import json
+                window_info = json.loads(output)
+
+            except Exception:
+                print(f" > Unexpected window check response: {output}")
+                stable_checks = 0
+                time.sleep(poll_interval)
+                continue
+
+            title = window_info.get("Title", "")
+            responding = bool(window_info.get("Responding"))
+            visible = bool(window_info.get("Visible"))
+            width = int(window_info.get("Width", 0))
+            height = int(window_info.get("Height", 0))
+            handle = int(window_info.get("Handle", 0))
+
+            basic_ready = (handle != 0 and responding and visible and width >= 300 and height >= 200)
+            if not basic_ready:
+                print(
+                    " > Window exists but is not ready: "
+                    f"title='{title}', "
+                    f"responding={responding}, "
+                    f"visible={visible}, "
+                    f"size={width}x{height}"
+                )
+
+                stable_checks = 0
+                previous_window_info = None
+                time.sleep(poll_interval)
+                continue
+
+            current_signature = (title, window_info.get("Left"), window_info.get("Top"), width, height,)
+            if current_signature == previous_window_info:
+                stable_checks += 1
+            else:
+                stable_checks = 1
+                previous_window_info = current_signature
+
+            print(
+                f" > License Manager window detected: "
+                f"'{title}', size={width}x{height}, "
+                f"stable={stable_checks}/{stable_checks_required}"
+            )
+
+            if stable_checks >= stable_checks_required:
+                time.sleep(2)
+                self.activate_license_manager_window()
+                return True, ("License Manager window is visible, responding and stable.")
+            time.sleep(poll_interval)
+
+        return False, (f"License Manager window was not fully ready within {timeout} seconds.")
+
+    def activate_license_manager_window(self):
+        activate_ps = r"""
+        $process = Get-Process -Name "KeysightLicenseManager" `
+            -ErrorAction SilentlyContinue |
+            Where-Object { $_.MainWindowHandle -ne 0 } |
+            Select-Object -First 1
+
+        if (-not $process)
+        {
+            Write-Output "NOT_FOUND"
+            exit
+        }
+
+        $shell = New-Object -ComObject WScript.Shell
+
+        $activated = $shell.AppActivate($process.Id)
+
+        if ($activated)
+        {
+            Start-Sleep -Milliseconds 500
+            Write-Output "ACTIVATED"
+        }
+        else
+        {
+            Write-Output "ACTIVATE_FAILED"
+        }
+        """
+
+        result = self.session.run_ps(activate_ps)
+
+        return result.std_out.decode(
+            errors="ignore"
+        ).strip() == "ACTIVATED"
 
     # The scroll license manger function - operat no the remote device scrolling the license manger table down
     def scroll_license_list(self, steps=12):
@@ -625,10 +837,34 @@ class WINconn:
 
         self.session.run_ps(cmd)
 
-        print("Waiting 40 second to running BAT file")
-        time.sleep(40)
+        print("Waiting 90 second to running BAT file....Please wait doing somethings in the background")
+        time.sleep(90)
         self.session.run_ps(f"Unregister-ScheduledTask -TaskName '{task_name}' -Confirm:$false")
         return f"BAT started visibly for {current_user}"
+
+    def get_model(self):
+
+        if not self.session:
+            if not self.connect():
+                return None
+        model = None
+        result = self.session.run_ps("(Get-CimInstance Win32_ComputerSystem).UserName")
+        full_user = result.std_out.decode(errors="ignore").strip()
+
+        if not full_user:
+            return None
+
+        print(f"User: {full_user}")
+
+        computer_name, username = full_user.split("\\", 1)
+        match = re.search(r"(E\d{4}[A-Z]|N\d{4}[A-Z])", computer_name)
+
+        if match:
+            model = match.group(1)
+            #print(model)
+
+        return model
+
 
     # The check OS function - operat no the remote device
     def get_remote_os(self, ip, user, password):
@@ -1078,16 +1314,12 @@ class WINconn:
                 f'/F'
             )
             result = subprocess.run(create_cmd, shell=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            print(result.stdout)
-            print(result.stderr)
             if result.returncode != 0:
                 print(" > Failed to create scheduled task")
                 print(result.stdout)
                 print(result.stderr)
                 return False
             result = subprocess.run(run_cmd, shell=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            print(result.stdout)
-            print(result.stderr)
             if result.returncode != 0:
                 print(" > Failed to run scheduled task")
                 print(result.stdout)
@@ -1164,61 +1396,130 @@ class WINconn:
         result = self.session.run_ps(ps)
         return result.std_out.decode(errors="ignore").strip()
 
-    def launch_xsa(self):
+    def launch_app(self, exe_path):
         if not self.session:
-            self.connect()
+            if not self.connect():
+                return False
 
-        exe_path = self.find_launch_xsa_path()
-        if exe_path == "NOT_FOUND":
-            print("LaunchXSA.exe not found")
+        if not exe_path or exe_path == "NOT_FOUND":
+            print("Invalid application path")
             return False
 
         work_dir = str(Path(exe_path).parent)
-        get_user = self.session.run_ps("(Get-CimInstance Win32_ComputerSystem).UserName")
-        current_user = get_user.std_out.decode(errors="ignore").strip()
+        process_name = Path(exe_path).stem
+
+        get_user = self.session.run_ps(
+            "(Get-CimInstance Win32_ComputerSystem).UserName"
+        )
+        current_user = get_user.std_out.decode(
+            errors="ignore"
+        ).strip()
 
         if not current_user:
-            return "Error: No active user session found."
+            print("No active user session found")
+            return False
 
-        task_name = f"LaunchXSA_{int(time.time())}"
+        task_name = f"LaunchApp_{int(time.time())}"
+
         inner_ps = f"""
-        Start-Process -FilePath "{exe_path}" -WorkingDirectory "{work_dir}" -WindowStyle Normal
-        Start-Sleep -Seconds 10
+        Start-Process `
+            -FilePath "{exe_path}" `
+            -WorkingDirectory "{work_dir}" `
+            -WindowStyle Normal
         """
-        encoded_payload = base64.b64encode(inner_ps.encode("utf-16-le")).decode("utf-8")
+
+        encoded_payload = base64.b64encode(
+            inner_ps.encode("utf-16-le")
+        ).decode("utf-8")
+
         cmd = (
             f'$action = New-ScheduledTaskAction '
             f'-Execute "powershell.exe" '
-            f'-Argument "-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded_payload}"; '
+            f'-Argument "-NoProfile -ExecutionPolicy Bypass '
+            f'-EncodedCommand {encoded_payload}"; '
+
             f'Register-ScheduledTask '
             f'-TaskName "{task_name}" '
             f'-Action $action '
             f'-User "{current_user}" '
             f'-RunLevel Highest '
             f'-Force | Out-Null; '
-            f'Start-ScheduledTask -TaskName "{task_name}"; '
-            f'Start-Sleep -Seconds 15; '
-            f'Get-Process | Where-Object {{$_.ProcessName -like "*XSA*" -or $_.ProcessName -like "*Agilent*" -or $_.ProcessName -like "*Keysight*" -or $_.ProcessName -like "*Signal*"}} | '
-            f'Select-Object ProcessName,Id,Path'
-        )
-        print(f" > Launching XSA for {current_user}")
-        print(f" > XSA Path: {exe_path}")
-        result = self.session.run_ps(cmd)
-        output = result.std_out.decode(errors="ignore").strip()
-        error = result.std_err.decode(errors="ignore").strip()
 
-        self.session.run_ps(
-            f"Unregister-ScheduledTask -TaskName '{task_name}' "
-            f"-Confirm:$false -ErrorAction SilentlyContinue"
+            f'Start-ScheduledTask -TaskName "{task_name}"'
         )
-        if output:
-            print("LaunchXSA started")
-            return True
-        print("LaunchXSA failed to start")
-        if error:
-            print(error)
 
-        return False
+        print(f" > Launching application for: {current_user}")
+        print(f" > Application path: {exe_path}")
+        print(f" > Expected process: {process_name}.exe")
+
+        try:
+            result = self.session.run_ps(cmd)
+
+            error = result.std_err.decode(
+                errors="ignore"
+            ).strip()
+
+            if error:
+                print(f"Launch command warning: {error}")
+
+            # זמן המתנה לעליית התהליך
+            timeout = 60
+            elapsed = 0
+
+            while elapsed < timeout:
+                check = self.session.run_ps(
+                    f"""
+                    $p = Get-Process `
+                        -Name "{process_name}" `
+                        -ErrorAction SilentlyContinue
+
+                    if ($p) {{
+                        $p |
+                        Select-Object ProcessName, Id, Path
+                    }}
+                    """
+                )
+
+                output = check.std_out.decode(
+                    errors="ignore"
+                ).strip()
+
+                if output:
+                    print("Launch App started successfully")
+                    print(output)
+
+                    self.session.run_ps(
+                        f"Unregister-ScheduledTask "
+                        f"-TaskName '{task_name}' "
+                        f"-Confirm:$false "
+                        f"-ErrorAction SilentlyContinue"
+                    )
+
+                    return True
+
+                time.sleep(2)
+                elapsed += 2
+
+            print(
+                f"Application process {process_name}.exe "
+                f"was not detected after {timeout} seconds"
+            )
+
+            return False
+
+        except Exception as e:
+            print(f"Launch App failed: {e}")
+            self.session = None
+            return False
+
+        finally:
+            if self.session:
+                self.session.run_ps(
+                    f"Unregister-ScheduledTask "
+                    f"-TaskName '{task_name}' "
+                    f"-Confirm:$false "
+                    f"-ErrorAction SilentlyContinue"
+                )
 
     def is_xsa_running(self):
         if not self.session:
@@ -1247,12 +1548,139 @@ class WINconn:
         print("XSA is not running")
         return False
 
+    def find_launch_network_path(self):
+        if not self.session:
+            if not self.connect():
+                return "NOT_FOUND"
+        exe_names = [
+            "E5061.exe",
+            "E5062.exe",
+            "E5071.exe",
+            "E5072.exe",
+            "E5080.exe",
+            "ENA.exe",
+            "NetworkAnalyzer.exe",
+            "Network Analyzer.exe",
+            "PNA.exe",
+        ]
+        known_paths = [
+            r"C:\Program Files (x86)\Agilent\E5061B\E5061.exe",
+            r"C:\Program Files (x86)\Keysight\E5061B\E5061.exe",
+            r"C:\Program Files\Agilent\E5061B\E5061.exe",
+            r"C:\Program Files\Keysight\E5061B\E5061.exe",
+
+            r"C:\Program Files (x86)\Agilent\E5061\E5061.exe",
+            r"C:\Program Files (x86)\Keysight\E5061\E5061.exe",
+            r"C:\Program Files\Agilent\E5061\E5061.exe",
+            r"C:\Program Files\Keysight\E5061\E5061.exe",
+        ]
+
+        for path in known_paths:
+            ps = f"""
+            if (Test-Path -LiteralPath '{path}') {{
+                Write-Output '{path}'
+            }}
+            """
+
+            try:
+                result = self.session.run_ps(ps)
+                output = result.std_out.decode(
+                    errors="ignore"
+                ).strip()
+
+                if output:
+                    print(f"Network Analyzer path found: {output}")
+                    return output
+
+            except Exception as e:
+                print(f"Known-path check failed: {e}")
+                self.session = None
+                return "NOT_FOUND"
+
+        search_roots = [
+            r"C:\Program Files (x86)\Agilent",
+            r"C:\Program Files (x86)\Keysight",
+            r"C:\Program Files\Agilent",
+            r"C:\Program Files\Keysight",
+            r"D:\Program Files (x86)\Agilent",
+            r"D:\Program Files (x86)\Keysight",
+            r"D:\Program Files\Agilent",
+            r"D:\Program Files\Keysight",
+            r"D:\Agilent",
+            r"D:\Keysight",
+        ]
+
+        for root in search_roots:
+            for exe_name in exe_names:
+                ps = f"""
+                if (Test-Path -LiteralPath '{root}') {{
+                    Get-ChildItem `
+                        -LiteralPath '{root}' `
+                        -Filter '{exe_name}' `
+                        -File `
+                        -Recurse `
+                        -ErrorAction SilentlyContinue |
+                    Where-Object {{
+                        $_.FullName -notmatch
+                        'Windows\\\\Installer|IO Libraries|Connection Expert|Updater|Uninstall'
+                    }} |
+                    Select-Object -First 1 -ExpandProperty FullName
+                }}
+                """
+
+                try:
+                    result = self.session.run_ps(ps)
+
+                    output = result.std_out.decode(
+                        errors="ignore"
+                    ).strip()
+
+                    if output:
+                        print(f"Network Analyzer path found: {output}")
+                        return output
+
+                except Exception as e:
+                    print(
+                        f"Search failed: root={root}, "
+                        f"exe={exe_name}, error={e}"
+                    )
+                    self.session = None
+                    return "NOT_FOUND"
+
+        ps_running = r"""
+        Get-CimInstance Win32_Process |
+        Where-Object {
+            $_.ExecutablePath -and
+            $_.Name -match '^(E5061|E5062|E5071|E5072|E5080|ENA|PNA|NetworkAnalyzer)\.exe$'
+        } |
+        Select-Object -First 1 -ExpandProperty ExecutablePath
+        """
+
+        try:
+            result = self.session.run_ps(ps_running)
+
+            output = result.std_out.decode(
+                errors="ignore"
+            ).strip()
+
+            if output:
+                print(f"Running Network Analyzer path: {output}")
+                return output
+
+        except Exception as e:
+            print(f"Running-process search failed: {e}")
+            self.session = None
+
+        print("Network Analyzer application was not found")
+        return "NOT_FOUND"
+
     def find_launch_xsa_path(self):
         if not self.session:
             self.connect()
 
         ps = r"""
         $paths = @(
+             # N90xxB - Signal Analyzer XSA
             "C:\Program Files\Keysight\SignalAnalysis\Infrastructure\LaunchXSA.exe",
             "C:\Program Files\Agilent\SignalAnalysis\Infrastructure\LaunchXSA.exe",
             "C:\Program Files\Agilent\SignalAnalysis\Infrastructure\LaunchXSA.exe",
@@ -1285,7 +1713,7 @@ class WINconn:
         result = self.session.run_ps(ps)
         print(result.std_out.decode(errors="ignore"))
 
-    def press_no_xsa_popup(self, wait_seconds=10):
+    def press_no_app_popup(self, wait_seconds=10):
         if not self.session:
             self.connect()
 
@@ -1361,7 +1789,7 @@ class WINconn:
         result = self.session.run_ps(ps)
         output = result.std_out.decode(errors="ignore").strip()
         #print(output)
-        report_step("Disable windows Updated notifications", "PASS", 85, results_list, "Disable windows Updated notifications", None, worker, logger)
+        report_step("Disable Agilent Updated notifications", "PASS", 85, results_list, "Disable windows Updated notifications", None, worker, logger)
         return "SUCCESS" in output
 
     def uninstall_all_calibration_advisors(self, dry_run=True):
@@ -1447,13 +1875,49 @@ class WINconn:
 
         return "UNINSTALLED" in output or "FOUND" in output
 
+    def get_running_network_analyzer_path(self):
+        if not self.session:
+            if not self.connect():
+                return False
+
+        ps = r"""
+        Get-CimInstance Win32_Process |
+        Where-Object {
+            $_.ExecutablePath -and
+            (
+                $_.Name -match 'ena|network|e506|e507|e508|pna' -or
+                $_.ExecutablePath -match 'ena|network|e506|e507|e508|pna'
+            )
+        } |
+        Where-Object {
+            $_.ExecutablePath -notmatch '^C:\\Windows\\Installer\\'
+        } |
+        Select-Object -First 1 -ExpandProperty ExecutablePath
+        """
+
+        try:
+            result = self.session.run_ps(ps)
+
+            path = result.std_out.decode(
+                errors="ignore"
+            ).strip()
+
+            if path:
+                print(f"Running Network Analyzer path: {path}")
+                return path
+
+        except Exception as e:
+            print(f"Failed to get running process path: {e}")
+            self.session = None
+
+        return "NOT_FOUND"
+
 
 def device_remote_to_administrator(target_ip, worker=None, logger=None):
     results_list = []
     admin_user = "Administrator"
-    admin_password = "Keysight4u!"
+    admin_password = ""
     instrument_user = "Instrument"
-    instrument_password = "measure4u"
     exe_destination_file = r'C$\Windows\Temp'
     bat_file_name = "InterlligentTester.bat"
     exe_file_name = "nircmd.exe"
@@ -1461,6 +1925,15 @@ def device_remote_to_administrator(target_ip, worker=None, logger=None):
 
     try:
         updater = WINconn(target_ip, admin_user, admin_password)
+        admin_passwords = get_passwords("Administrator", load_configFile("password_path"))
+        inst_passwords = get_passwords("Instrument", load_configFile("password_path"))
+        real_admin_password = updater.check_password( username="Administrator", passwords=admin_passwords)
+        real_inst_password = updater.check_password(username="Instrument", passwords=inst_passwords)
+        admin_password = real_admin_password
+        instrument_password = real_inst_password
+        updater.username = "Administrator"
+        updater.password = real_admin_password
+        updater.session = None
 
         updater.copy_file_to_remote(target_ip, admin_user, admin_password, source, exe_file_name, None, exe_destination_file)
         report_step("Copy the mircmd file to the device", "PASS", 1, results_list, " ", None, worker, logger)
@@ -1502,21 +1975,37 @@ def device_remote_to_administrator(target_ip, worker=None, logger=None):
 
         updater.copy_file_to_remote(target_ip, admin_user, admin_password, source, bat_file_name)
         report_step("Copy the BAT file to the device", "PASS", 4, results_list, " ", None, worker, logger)
+        report_step("Running the BAT file on the device 90 sec..Please wait doing somethings in the background", "INFO", 4, results_list, " ", None, worker, logger)
         updater.run_bat_file()
         report_step("Remote Device to by control by local computer", "PASS", 4, results_list, " ", None, worker, logger)
         updater.set_auto_login_user(instrument_user, instrument_password, domain=".")
         report_step("Auto set user to Instrument", "INFO", 5, results_list, " ", None, worker, logger)
-        xsa_path = updater.find_launch_xsa_path()
-        print(xsa_path)
-        report_step(f"Launch XSA Path: {xsa_path}", "INFO", 6, results_list, " ", None, worker, logger)
-        if updater.launch_xsa():
-            report_step("Launch XSA Program", "PASS", 8, results_list, " ", None, worker, logger)
-            updater.press_no_xsa_popup(20)
-        else:
-            report_step("Failed to launch XSA Program", "FAIL", 8, results_list, " ", None, worker, logger)
-            return False
+        model = updater.get_model()
+        report_step(f"Model Device is: {model}", "INFO", 5, results_list, " ", None, worker, logger)
 
-        return True
+        if f"{model[:3]}xxB" == "N90xxB":
+            app_path = updater.find_launch_xsa_path()
+            print(app_path)
+            report_step(f"Launch XSA Path: {app_path}", "INFO", 6, results_list, " ", None, worker, logger)
+            if updater.launch_app(app_path):
+                report_step("Launch XSA Program", "PASS", 8, results_list, " ", None, worker, logger)
+                updater.press_no_app_popup(20)
+            else:
+                report_step("Failed to launch XSA Program", "FAIL", 8, results_list, " ", None, worker, logger)
+                return f"{model[:4]}x"
+
+        if f"{model[:3]}xxB" == "E50xxB":
+            app_path = updater.find_launch_network_path()
+            print(app_path)
+            report_step(f"Launch Network Path: {app_path}", "INFO", 6, results_list, " ", None, worker, logger)
+            if updater.launch_app(app_path):
+                report_step("Launch Network Program", "PASS", 8, results_list, " ", None, worker, logger)
+                updater.press_no_app_popup(20)
+            else:
+                report_step("Failed to launch Network Program", "FAIL", 8, results_list, " ", None, worker, logger)
+                return f"{model[:3]}xxB"
+
+        return f"{model[:4]}x"
 
     except Exception as e:
         print(f"Error connecting to WIN user: {e}")

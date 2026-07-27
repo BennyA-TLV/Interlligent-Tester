@@ -35,7 +35,10 @@ import os
 
 
 # The get keysight newest software details function - the function open the chrome, in show mode, to the take all the newest software details
-def get_keysight_software_details(url, retries=2):
+def get_keysight_software_details(url, retries=3):
+    results = []
+    driver = None
+    profile_dir = None
 
     options = uc.ChromeOptions()
     options.add_argument('--blink-settings=imagesEnabled=false')
@@ -70,7 +73,7 @@ def get_keysight_software_details(url, retries=2):
             if any(msg in page_text.lower() for msg in ["access denied", "security check", "captcha", "forbidden"]):
                 raise PermissionError("Access blocked by website (Bot detection)")
 
-            all_versions = re.findall(r'A\.\d{1,2}\.\d{1,2}', page_text)
+            all_versions = re.findall(r'[A-Z]\.\d{1,2}\.\d{1,2}', page_text)
             latest_rev = sorted(list(set(all_versions)), reverse=True)[0] if all_versions else "Not found"
 
             found_os = [os for os in ["Windows 11", "Windows 10"] if os in page_text]
@@ -92,10 +95,73 @@ def get_keysight_software_details(url, retries=2):
             safe_close_driver(driver)
 
         if attempt < retries:
-            time.sleep(5)
+            time.sleep(20)
 
     return {"error": "Failed to retrieve data after multiple attempts", "status": "failed"}
 
+def cloudflare_visible(driver):
+    try:
+        page_text = driver.page_source.lower()
+        title = (driver.title or "").lower()
+
+        indicators = [
+            "verify you are human",
+            "verifying your connection",
+            "security check",
+            "just a moment",
+        ]
+
+        if any(text in page_text or text in title for text in indicators):
+            return True
+
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+
+        for frame in frames:
+            src = (frame.get_attribute("src") or "").lower()
+            title_attr = (frame.get_attribute("title") or "").lower()
+
+            if (
+                "cloudflare" in src
+                or "turnstile" in src
+                or "challenge" in src
+                or "cloudflare" in title_attr
+                or "challenge" in title_attr
+            ):
+                return True
+
+    except Exception:
+        pass
+
+    return False
+
+def wait_for_cloudflare_if_needed(driver, timeout=120):
+
+    if not cloudflare_visible(driver):
+        return True
+
+    print(" > Cloudflare verification detected.")
+    print(" > Please complete the verification manually in Chrome.")
+
+    show_popup_non_blocking(
+        "Cloudflare security verification detected.\n"
+        "Please complete 'Verify you are human' manually in Chrome.\n"
+        "The automation will continue automatically afterward.",
+        "Action Required",
+        60
+    )
+
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        if not cloudflare_visible(driver):
+            print(" > Cloudflare verification completed.")
+            time.sleep(3)
+            return True
+
+        time.sleep(2)
+
+    print(" > Timeout waiting for Cloudflare verification.")
+    return False
 
 # The get keysight software versions with the OS details function - the function open the chrome, in show mode, to the take all the software details
 """def get_keysight_versions_with_os(url):
@@ -161,6 +227,97 @@ def get_latest_for_os(data, target_os):
 
     return latest
 
+def parse_keysight_version(version):
+
+    match = re.fullmatch(r"\s*([A-Za-z])\.(\d+)(?:\.(\d+))?\s*", version)
+
+    if not match:
+        raise ValueError(f"Invalid Keysight version: {version}")
+
+    return (
+        match.group(1).upper(),
+        int(match.group(2)),
+        int(match.group(3) or 0)
+    )
+
+
+def normalize_os(value):
+    return re.sub(r"\s+", " ", str(value)).strip().lower()
+
+
+def os_is_compatible(target_os, supported_os_list):
+    target = normalize_os(target_os)
+
+    return any(
+        target == normalize_os(supported_os)
+        or target in normalize_os(supported_os)
+        or normalize_os(supported_os) in target
+        for supported_os in supported_os_list
+    )
+
+
+def version_sort_key(version):
+
+    prefix, major, patch = parse_keysight_version(version)
+
+    prefix_number = ord(prefix) - ord("A")
+
+    return prefix_number, major, patch
+
+
+def get_upgrade_versions_for_os(current_version, target_os, url):
+
+    all_versions = get_keysight_versions_with_os(url)
+    current_prefix, current_major, current_patch = parse_keysight_version(current_version)
+    current_key = version_sort_key(current_version)
+    best_version_per_stage = {}
+
+    for item in all_versions:
+        version = item.get("Version")
+        supported_os = item.get("OS", [])
+
+        if not version:
+            continue
+
+        if not os_is_compatible(target_os, supported_os):
+            continue
+
+        try:
+            prefix, major, patch = parse_keysight_version(version)
+            candidate_key = version_sort_key(version)
+        except ValueError:
+            continue
+
+        if candidate_key <= current_key:
+            continue
+
+        #if prefix == current_prefix and major == current_major:
+            continue
+
+        stage = (prefix, major)
+        existing = best_version_per_stage.get(stage)
+
+        if existing is None or patch > existing["Patch"]:
+            best_version_per_stage[stage] = {
+                "Version": version,
+                "Patch": patch,
+                "OS": supported_os
+            }
+
+
+    sorted_stages = sorted(
+        best_version_per_stage,
+        key=lambda stage: (
+            ord(stage[0]) - ord("A"),
+            stage[1]
+        )
+    )
+
+    return [
+        best_version_per_stage[stage]["Version"]
+        for stage in sorted_stages
+    ]
+
 # The get latest firmware version for the OS function
 def get_latest_version_for_os(target_os, url):
     all_versions = get_keysight_versions_with_os(url)
@@ -224,7 +381,7 @@ def get_keysight_versions_with_os(url):
         chunks = full_html.split('class="accordion1"')
 
         for chunk in chunks[1:]:
-            v_match = re.search(r'A\.\d+\.\d+', chunk)
+            v_match = re.search(r'[A-Z]\.\d+\.\d+', chunk)
             v_num = v_match.group(0) if v_match else None
             if v_num:
                 raw_os = re.findall(r'Windows\s*(?:11|10|8|7|Server|XP)', chunk, re.I)
@@ -247,7 +404,7 @@ def download_keysight_version(target_version, url, model, download=False, downlo
     options = uc.ChromeOptions()
     options.add_argument('--blink-settings=imagesEnabled=false')
     options.add_argument('--start-maximized')
-    driver = None
+    file_name = None
 
     try:
         chrome_version = get_chrome_major_version()
@@ -276,20 +433,20 @@ def download_keysight_version(target_version, url, model, download=False, downlo
 
         if not target_btn:
             print(f"Version {target_version} not found on page.")
-            return None, None
+            return {"Version": target_version, "Success": False, "Path": None, "File Name": target_version}
 
         if not download:
             safe_close_driver(driver)
-            return url, False
+            return {"Version": target_version, "Success": False, "Path": url, "File Name": target_version}
 
         folder = Path(download_path, model)
         folder.mkdir(parents=True, exist_ok=True)
         if any(f.is_file() and target_version.lower() in f.name.lower() for f in folder.iterdir()):
             print(f"Find the {target_version} in {download_path}//{model} no need to download.")
             safe_close_driver(driver)
-            return download_path, False
+            return {"Version": target_version, "Success": True, "Path": download_path, "File Name": target_version}
         else:
-            print(f"Clicking Download Button for Version {target_version}")
+            print(f"Need to Download Version {target_version}")
 
             driver.execute_script("arguments[0].scrollIntoView(true);", target_btn)
             time.sleep(5)
@@ -299,6 +456,7 @@ def download_keysight_version(target_version, url, model, download=False, downlo
             driver.maximize_window()
             wait = WebDriverWait(driver, 20)
             time.sleep(10)
+            wait_for_cloudflare_if_needed(driver, timeout=180)
             form_data = {
                 "EmailAddress": "A@A.com",
                 "FirstGivenName": "A",
@@ -306,25 +464,76 @@ def download_keysight_version(target_version, url, model, download=False, downlo
                 "CompanyName": "A",
             }
 
-            for name, value in form_data.items():
-                element = wait.until(EC.element_to_be_clickable((By.NAME, name)))
-                human_type_with_mouse(driver, element, value)
-                time.sleep(2)
+            checkbox = wait.until(EC.presence_of_element_located((By.NAME,"rememberMe" )))
 
-            print("All fields have been successfully filled in using the injection method!")
-            time.sleep(5)
+            if not checkbox.is_selected():
+                for name, value in form_data.items():
+                    element = wait.until(EC.element_to_be_clickable((By.NAME, name)))
+                    human_type_with_mouse(driver, element, value)
+                    time.sleep(2)
+
+                print("All fields have been successfully filled in using the injection method!")
+                ensure_remember_me_checked(driver, 30)
+                time.sleep(5)
+
             download_btn = wait.until(EC.element_to_be_clickable((By.NAME, "Download")))
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});",download_btn)
             time.sleep(5)
-            download_btn.click()
+
+            try:
+                download_btn.click()
+            except Exception:
+                driver.execute_script("arguments[0].click();",download_btn)
 
             if check_standard_download(download_btn, download_defult):
-                copy_file_by_name(download_defult, model, download_path, target_version)
+                file_name = copy_file_by_name(download_defult, model, download_path, target_version)
                 safe_close_driver(driver)
 
     except Exception as e:
         print(f" > Exception in get_active_session_id: {e}")
 
-    return download_path, True
+    return {"Version": target_version, "Success": True, "Path": download_path, "File Name": file_name}
+
+def ensure_remember_me_checked(driver, timeout=30):
+
+    wait = WebDriverWait(driver, timeout)
+    try:
+        checkbox = wait.until(EC.presence_of_element_located((By.NAME,"rememberMe")))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
+        if not checkbox.is_selected():
+            try:
+                checkbox.click()
+            except Exception:
+                driver.execute_script("arguments[0].click();", checkbox)
+
+        wait.until(lambda d: d.find_element(By.NAME, "rememberMe").is_selected())
+
+        print(" > Remember me checkbox is selected.")
+        return True
+
+    except Exception as e:
+        print(f" > Failed to select Remember me: {e}")
+        return False
+
+
+def set_checkbox_state(driver, wait, checkbox_text, checked=True):
+
+    checkbox = wait.until(EC.presence_of_element_located((By.XPATH, f"//label[contains(normalize-space(.), '{checkbox_text}')]/preceding::input[@type='checkbox'][1]")))
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
+    current = checkbox.is_selected()
+
+    if current != checked:
+        try:
+            checkbox.click()
+        except Exception:
+            driver.execute_script(
+                "arguments[0].click();",
+                checkbox
+            )
+
+    wait.until(lambda d: checkbox.is_selected() == checked)
+
+    return checkbox.is_selected()
 
 # The numan typing function - for the software download (to not look like bot)
 def human_type_with_mouse(driver, element, text):
@@ -432,6 +641,8 @@ def safe_close_driver(driver):
     user_data_dir = None
 
     try:
+        arguments = getattr(driver.options, "arguments", [])
+
         for arg in driver.options.arguments:
             if arg.startswith("--user-data-dir="):
                 user_data_dir = arg.split("=", 1)[1].strip('"')
@@ -449,29 +660,44 @@ def safe_close_driver(driver):
     if user_data_dir:
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                name = proc.info.get("name", "").lower()
-                cmdline = " ".join(proc.info.get("cmdline") or "")
+                name = (proc.info.get("name") or "").lower()
+                cmdline_parts = proc.info.get("cmdline") or []
+                cmdline = " ".join(cmdline_parts)
 
-                if "chrome.exe" in name and user_data_dir.lower() in cmdline.lower():
-                    print(f"Killing Chrome PID {proc.pid}")
+                is_chrome = name in (
+                    "chrome.exe",
+                    "chromedriver.exe",
+                )
+
+                belongs_to_profile = (user_data_dir.lower() in cmdline.lower())
+
+                if is_chrome and belongs_to_profile:
+                    #print( f" > Killing leftover process "f"{name} PID {proc.pid}")
                     proc.kill()
 
-            except Exception:
+            except (
+                    psutil.NoSuchProcess,
+                    psutil.AccessDenied,
+                    psutil.ZombieProcess,
+            ):
                 pass
+            except Exception as e:
+                print(f" > Process cleanup error: {e}")
 
         time.sleep(1)
 
         try:
             shutil.rmtree(user_data_dir, ignore_errors=True)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f" > Failed removing Chrome profile: {e}")
 
 
 if __name__ == "__main__":
 
     target_os = "Windows 10"
     target_url_folder = load_configFile("url_path")
-    url = get_urls("N9020B", target_url_folder)
+    upgrade_path = ['B.06.30', 'C.07.02']
+    url = get_urls("E5061B", target_url_folder)
 
     """all_versions = get_keysight_versions_with_os(url)
     result = get_latest_for_os(all_versions, target_os)

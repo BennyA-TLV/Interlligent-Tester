@@ -54,6 +54,8 @@ def load_configFile(file_path):
         url_path = config['input_files']['url_root']
         email_path = config['input_files']['email_root']
         option_path = config['input_files']['option_descriptions_root']
+        license_path = config['input_files']['license_descriptions_root']
+        password_path = config['input_files']['password_root']
 
 
         if file_path.strip() == "pdf_reports_path":
@@ -68,10 +70,14 @@ def load_configFile(file_path):
             return email_path
         elif file_path.strip() == "option_path":
             return option_path
+        elif file_path.strip() == "license_path":
+            return license_path
         elif file_path.strip() == "bat_mircmd_path":
             return bat_mircmd_path
         elif file_path.strip() == "log_path":
             return log_path
+        elif file_path.strip() == "password_path":
+            return password_path
         else:
             return None
 
@@ -82,11 +88,34 @@ def load_configFile(file_path):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
+# The get the passwords function - getting the admin password from the passwords files
+def get_passwords(user, path_file):
+    file_path = os.path.abspath(os.path.join(path_file, "Password.csv"))
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File does not exist: {file_path}")
+
+    try:
+        df = pd.read_csv(file_path, encoding="utf-8")
+    except UnicodeDecodeError:
+        df = pd.read_csv(file_path, encoding="ISO-8859-8")
+
+    df = df.fillna("")
+
+    if "User" not in df.columns or "Password" not in df.columns:
+        raise ValueError("CSV must contain columns: User,Password")
+
+    passwords = df.loc[
+        df["User"].astype(str).str.strip().str.lower() == user.strip().lower(),
+        "Password"
+    ].astype(str).str.strip().tolist()
+
+    return passwords
 
 # The get the url function - getting the url from the urls files
 def get_urls(option, path_file):
 
-    file_path = os.path.join(path_file, "url.csv")
+    file_path = os.path.join(path_file, "Url.csv")
     file_path = os.path.abspath(file_path)
 
     if not os.path.exists(file_path):
@@ -107,7 +136,7 @@ def get_urls(option, path_file):
 # The get option descriptions function - getting the description form the option_descriptions.csv file
 def get_option_descriptions(path_file):
 
-    file_path = os.path.join(path_file, "option_descriptions.csv")
+    file_path = os.path.join(path_file, "Option_descriptions.csv")
     file_path = os.path.abspath(file_path)
 
     if not os.path.exists(file_path):
@@ -120,16 +149,33 @@ def get_option_descriptions(path_file):
 
     return [df[col].tolist() for col in df.columns]
 
+# The get license descriptions function - getting the description form the license_descriptions.xlsx file
+def get_license_descriptions(path_file):
+
+    file_path = os.path.join(path_file, "License_descriptions.xlsx")
+    file_path = os.path.abspath(file_path)
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File does not exists in {file_path}")
+
+    try:
+        df = pd.read_excel(file_path, dtype=str)
+    except UnicodeDecodeError:
+        df = pd.read_excel(file_path, dtype=str)
+
+    return [df[col].tolist() for col in df.columns]
+
 # The find option descriptions function - finding the description in the option_descriptions.csv file
 def find_option_descriptions(option_descriptions, option):
 
     for opt in range(len(option_descriptions[0])):
-        if option.strip() == option_descriptions[0][opt].strip():
+        if str(option.strip()) == str(option_descriptions[0][opt]).strip():
             return option_descriptions[1][opt]
     return "No Description"
 
 # The find last file in folder function
 def get_latest_file(folder_path, model, download, contains_text=None):
+
     path = Path(folder_path, model)
 
     if not path.exists() or not path.is_dir():
@@ -142,6 +188,32 @@ def get_latest_file(folder_path, model, download, contains_text=None):
     if download:
         return max(files, key=lambda f: f.stat().st_mtime).name
 
+    else:
+        if contains_text:
+            files = [f for f in files if contains_text.lower() in f.name.lower()]
+            if not files:
+                return "No file found in the directory."
+            return max(files, key=lambda f: f.stat().st_mtime).name
+
+        return "None"
+
+def find_file_by_name(folder_path, model, download, contains_text=None):
+
+    path = Path(folder_path, model)
+
+    if not path.is_dir():
+        return None
+
+    files = [
+        f for f in path.iterdir()
+        if f.is_file() and contains_text.lower() in f.name.lower()
+    ]
+
+    if not files:
+        return None
+
+    if download:
+        return max(files, key=lambda f: f.stat().st_mtime).name
     else:
         if contains_text:
             files = [f for f in files if contains_text.lower() in f.name.lower()]
@@ -553,44 +625,102 @@ def debug_print(message):
 
 def device_information(device, worker=None, logger=None, timeout=600):
     results_list = []
-    device_Model = "None"
+    device_model = "None"
     serial_number = "None"
-    device_xsa = False
+    instrument_ready = False
+
     start_time = time.time()
 
     while time.time() - start_time < timeout:
+        try:
+            device.connect()
+
+            idn = device.query("*IDN?")
+
+            if idn and idn.strip():
+                idn = idn.strip()
+                print(f" > Instrument Ready: {idn}")
+                instrument_ready = True
+                break
+
+        except Exception as error:
+            print(f" > Instrument not ready: {type(error).__name__}: {error}")
+
+            try:
+                device.disconnect()
+            except Exception:
+                pass
+
+        print(" > Waiting for app to finish loading...")
+
+        report_step(
+            "Waiting for app to finish loading...",
+            "INFO",
+            0,
+            results_list,
+            " ",
+            None,
+            worker,
+            logger
+        )
+
+        if check_progress(worker):
+            try:
+                device.disconnect()
+            except Exception:
+                pass
+
+            return serial_number, device_model, results_list
+
+        time.sleep(30)
+
+    if not instrument_ready:
+        print(" > Timeout waiting for app")
+
+        report_step(
+            "Device isn't replying",
+            "FAIL",
+            1,
+            results_list,
+            "Timeout waiting for *IDN? response",
+            None,
+            worker,
+            logger
+        )
 
         try:
-            if device.connect():
-                idn = device.query("*IDN?")
-
-                if idn:
-                    print(f" > Instrument Ready: {idn}")
-                    device_xsa = True
-                    break
-
+            device.disconnect()
         except Exception:
             pass
 
-        print(" > Waiting for XSA to finish loading...")
-        report_step("Waiting for XSA to finish loading...", "INFO", 0, results_list, " ", None, worker, logger)
-        time.sleep(30)
+        return serial_number, device_model, results_list
 
-    if not device_xsa:
-        print(" > Timeout waiting for XSA")
-        return serial_number, device_Model, results_list
+    report_step(
+        "Device is replying",
+        "PASS",
+        1,
+        results_list,
+        idn,
+        None,
+        worker,
+        logger
+    )
 
-    else:
-        if device.connect():
-            report_step("Device is replaying", "PASS", 1, results_list, " ", None, worker, logger)
-            device_Model = device.get_idn()[1]
-            serial_number = device.get_idn()[2]
-        else:
-            report_step("Device isn't replaying", "FAIL", 1, results_list, " ", None, worker, logger)
-        if check_progress(worker): return results_list
+    # Keysight Technologies,E5061B,MY12345678,A.xx.xx
+    idn_parts = [part.strip() for part in idn.split(",")]
 
+    if len(idn_parts) >= 2:
+        device_model = idn_parts[1]
+
+    if len(idn_parts) >= 3:
+        serial_number = idn_parts[2]
+
+    try:
         device.disconnect()
-        return  serial_number, device_Model, results_list
+    except Exception as error:
+        print(f" > Disconnect warning: {error}")
+
+    return serial_number, device_model, results_list
 
 # Wait until remote device replies to ping, timeout: max wait time in seconds, interval: seconds between ping attempts
 def wait_for_ping(ip, worker=None, logger=None, timeout=300, interval=5):

@@ -23,7 +23,7 @@ IVI_SETTING_SET_SPAN = ":SENSE:FREQ:SPAN"
     # Open the system information screen on the device function
     # Main N90xxB function
 
-class N90XXB(SignalAnalyzer):
+class N90XXB(SignalSignalAnalyzer):
 
     # Getting the license data for the device function
     def deep_license_scan(self):
@@ -119,8 +119,9 @@ class N90XXB(SignalAnalyzer):
             print(f"Error: {e}")
 
 # Main N90xxB function
-def N90XXB_System_Test(target_ip, worker=None, logger=None):
+def N90XXB_System_Test(target_ip,worker=None, logger=None):
     results_list = []
+    download_results = []
     device = None
     device_Model = "None"
     serial_number = "None"
@@ -150,6 +151,12 @@ def N90XXB_System_Test(target_ip, worker=None, logger=None):
         if check_progress(worker): return serial_number, device_Model, results_list
         report_step("Connection to N90XXB Windows Device", "RUNNING", 10, results_list, " ", None, worker, logger)
         windows_control = WINconn(target_ip, admin_user, admin_password)
+        admin_passwords = get_passwords("Administrator", load_configFile("password_path"))
+        real_admin_password = windows_control.check_password(username="Administrator", passwords=admin_passwords)
+        admin_password = real_admin_password
+        windows_control.username = "Administrator"
+        windows_control.password = real_admin_password
+        windows_control.session = None
         if windows_control.connect():
             report_step("Connection to N90XXB Windows Device", "PASS", 10, results_list, " ", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
@@ -200,24 +207,24 @@ def N90XXB_System_Test(target_ip, worker=None, logger=None):
             if check_progress(worker): return serial_number, device_Model, results_list
             device.alignment_Now_All(results_list, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
-            device.capture_other_screen(results_list, worker, logger)
+            #device.capture_other_screen(results_list, worker, logger)
             report_step("Screen Shots all Data (Errors, Hardware, LXI, HW_Statistics)", "PASS", 35, results_list, "Done", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             time.sleep(5)
-            device.open_system_screen()
+            #device.open_system_screen()
             report_step("Open System Information", "PASS", 36, results_list, " ", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             device.disconnect()
-            windows_control.capture_all_systems(serial_number, results_list, worker, logger)
+            #windows_control.capture_all_systems(serial_number, results_list, worker, logger)
             report_step("Screen Shots System Information", "PASS", 40, results_list, "Done", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             time.sleep(2)
-            print(windows_control.open_license_manager())
+            #print(windows_control.open_license_manager())
             time.sleep(30)
             report_step("Open License Window", "PASS", 41, results_list, " ", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             time.sleep(5)
-            windows_control.capture_all_licenses(serial_number, results_list, worker, logger)
+            #windows_control.capture_all_licenses(serial_number, results_list, worker, logger)
             report_step("Screen Shots License Information", "PASS", 45, results_list, "Done", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             url = get_urls(device_Model, load_configFile("url_path"))
@@ -235,7 +242,17 @@ def N90XXB_System_Test(target_ip, worker=None, logger=None):
                 add_text_row(firmware_info_table, f"Latest firmware for device OS - {latest}")
                 if check_progress(worker): return serial_number, device_Model, results_list
                 print(f"The latest version for {requested_os} is: {latest}")
-                link, was_download = download_keysight_version(latest, url, get_n90_family(device_Model), download, download_path, download_defult)
+                upgrade_path = get_upgrade_versions_for_os(firmwareUnitVer, requested_os, url)
+                report_step("The Steps to Upgrade firmware", "INFO", 51, results_list, f"Upgrade Path - {upgrade_path}",
+                            None, worker, logger)
+                add_text_row(firmware_info_table, f"Upgrade Path - {upgrade_path}")
+                if check_progress(worker): return serial_number, device_Model, results_list
+                for version in upgrade_path:
+                    result = download_keysight_version(version, url, get_n90_family(device_Model), download, download_path, download_defult)
+                    download_results.append(result)
+                    time.sleep(10)
+                was_download = all(item["Success"] for item in download_results)
+                link = [item["Path"] for item in download_results if item["Success"]]
                 if was_download:
                     report_step("link for Download the latest firmware OS", "INFO", 52, results_list, f"Download the latest firmware OS - {link}", None, worker, logger)
                     add_text_row(firmware_info_table, f"link for Download the latest firmware for OS - {link}")
@@ -243,7 +260,6 @@ def N90XXB_System_Test(target_ip, worker=None, logger=None):
                     report_step("Latest firmware OS", "INFO", 52, results_list, f"latest firmware OS - {link}", None, worker, logger)
                     add_text_row(firmware_info_table, f"Latest firmware for OS - {link}")
                 if check_progress(worker): return serial_number, device_Model, results_list
-                print(f"The firmware {latest} file is in: {link}\\{device_Model}")
 
                 if (firmwareWebVer.get('revision') != firmwareUnitVer) and (
                         requested_os.lower() in firmwareWebVer.get('os').lower()):
@@ -272,20 +288,22 @@ def N90XXB_System_Test(target_ip, worker=None, logger=None):
                 if check_progress(worker): return serial_number, device_Model, results_list
 
                 if download:
-                    firmware_file = get_latest_file(download_path, get_n90_family(device_Model), was_download, latest)
-                    report_step("Download Firmware " + firmware_file, "PASS", 70, results_list, "Download Firmware " + firmware_file, None, worker, logger)
-                    add_text_row(firmware_info_table, "Download Firmware " + firmware_file)
-                    if check_progress(worker): return serial_number, device_Model, results_list
-                    print(f"The file in {download_path}\\{get_n90_family(device_Model)} is: {firmware_file}")
-                    copy_file = windows_control.copy_file_to_remote(target_ip, admin_user, admin_password, download_path, firmware_file, get_n90_family(device_Model), exe_destination_file)
-                    if copy_file:
-                        report_step("Copy the download Firmware " + firmware_file + " to the device", "PASS", 75, results_list, "Copy the download Firmware " + firmware_file + " to the device", None, worker, logger)
-                        add_text_row(firmware_info_table, "Copy the download Firmware " + firmware_file + " to the device")
-                    else:
-                        report_step("Firmware " + firmware_file + " is already in the device", "PASS", 75, results_list,"Firmware " + firmware_file + " is already in the device", None, worker, logger)
-                        add_text_row(firmware_info_table, "Firmware " + firmware_file + " is already in the device")
-                    if check_progress(worker): return serial_number, device_Model, results_list
-                    print(f"The firmware {latest} file is in the device: {exe_destination_file}")
+                    for index, version in enumerate(upgrade_path):
+                        print(f"The firmware {version} file is in: {link[index]}\\{device_Model}")
+                        firmware_file = find_file_by_name(download_path, get_n90_family(device_Model), was_download, latest)
+                        report_step("Download Firmware " + firmware_file, "PASS", 70, results_list, "Download Firmware " + firmware_file, None, worker, logger)
+                        add_text_row(firmware_info_table, "Download Firmware " + firmware_file)
+                        if check_progress(worker): return serial_number, device_Model, results_list
+                        print(f"The file in {download_path}\\{get_n90_family(device_Model)} is: {firmware_file}")
+                        copy_file = windows_control.copy_file_to_remote(target_ip, admin_user, admin_password, download_path, firmware_file, get_n90_family(device_Model), exe_destination_file)
+                        if copy_file:
+                            report_step("Copy the download Firmware " + firmware_file + " to the device", "PASS", 75, results_list, "Copy the download Firmware " + firmware_file + " to the device", None, worker, logger)
+                            add_text_row(firmware_info_table, "Copy the download Firmware " + firmware_file + " to the device")
+                        else:
+                            report_step("Firmware " + firmware_file + " is already in the device", "PASS", 75, results_list,"Firmware " + firmware_file + " is already in the device", None, worker, logger)
+                            add_text_row(firmware_info_table, "Firmware " + firmware_file + " is already in the device")
+                        if check_progress(worker): return serial_number, device_Model, results_list
+                        print(f"The firmware {latest} file is in the device: {exe_destination_file}")
                 else:
                     print(f"The firmware {firmwareUnitVer} file is in: {link}")
 

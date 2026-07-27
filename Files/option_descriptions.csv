@@ -1,30 +1,56 @@
-Name,Option Descriptions
-N9060ES1E,Core Software Including IQ and Spectrum Analyzer Apps
-N9000B-MTU,Multi-touch user Interface
-N9000B-PCB,"Interl(R) Core(TM) i3-9100HL CPU @ 1.60GHz, 16 GB"
-N9000B-SSD,MICRON_3400_MTFDKBA512TFH
-N9000B-W11,"Microsoft Windows 11 loT Etherprise LTSC 26100, 64 bit OS"
-N9000B-503,"Frequency Range, 9 kHz to 3.0 GHz"
+﻿Name,Option Descriptions
+N9000B-MTU,Multi-touch User Interface
+N9000B-PC7,Processor Assembly / CPU Platform PC7
+N9000B-SSD,Additional Removable Solid State Drive
+N9000B-W10,Microsoft Windows 10 Operating System
 N9000B-507,"Frequency Range, 9 kHz to 7.5 GHz"
-N9000B-526,"Frequency Range, 9 kHz to 26.5 GHz"
-N9000B-513,"Frequency Range, 9 kHz to 13.6 GHz"
-N9000B-B25,"Analysis Bandwidth, 25 MHz"
-N9000B-FSA,Fine resolution step attenuator
-N9000B-PFR,Precision frequency reference
-N9000B-UK8,Commercial calibration certificate with test data
-N9000B-A6J,ANSI Z540-1-1994 Calibration
-N9000B-AMG,Calibration + Uncertainties + Guardbanding (Accredited)
-N9000B-CR3,"Connector, Wideband IF output"
-N9000B-T06,"Tracking generator, 9 kHz to 6 GHz"
-N9000B-T03,"Tracking generator, 9 kHz to 3 GHz"
-N9000B-PRC,Portable configuration
-N9000B-P03,"Preamplifier, 3.0 GHz"
-N9000B-P07,"Preamplifier, 7.5 GHz"
-N9000B-P13,"Preamplifier, 13.6 GHz"
-N9000B-P26,"Preamplifier, 26.5 GHz"
-N9000B-SF1,"Security features, exclude launching programs"
-N9000B-SF2,"Security features, prohibit saving results"
-N9000B-EP4,"Enhanced Phase Noise Performance, CXA"
+N9000B-B25,25 MHz Analysis Bandwidth
+N9000B-EDP,Enhanced Display Package
+N9000B-EMC,Basic EMC Measurement Application
+N9000B-EP4,Enhanced Phase Noise Performance
+N9000B-ESC,Enhanced Security Configuration
+N9000B-FSA,Fine Step Attenuator
+N9000B-P07,"Pre-Amplifier, 7.5 GHz"
+N9000B-PFR,Precision Frequency Reference
+N9000B-T06,"Tracking Generator, 6 GHz"
+N9060C-2FP,Spectrum Analyzer Measurement Application (Fixed Perpetual License)
+N9060EM1E-1FP,EMI Measurement Application (Fixed Perpetual License)
+N9010B-503,"Frequency range, 10 Hz to 3.6 GHz"
+N9010B-508,"Frequency range, 10 Hz to 8.4 GHz"
+N9010B-513,"Frequency range, 10 Hz to 13.6 GHz"
+N9010B-526,"Frequency range, 10 Hz to 26.5 GHz"
+N9010B-532,"Frequency range, 10 Hz to 32 GHz"
+N9010B-544,"Frequency range, 10 Hz to 44 GHz"
+N9010B-550,"Frequency range, 10 Hz to 50 GHz"
+N9010B-P03,"Preamplifier, 3.6 GHz"
+N9010B-P08,"Preamplifier, 8.4 GHz"
+N9010B-P13,"Preamplifier, 13.6 GHz"
+N9010B-P26,"Preamplifier, 26.5 GHz"
+N9010B-P32,"Preamplifier, 32 GHz"
+N9010B-P44,"Preamplifier, 44 GHz"
+N9010B-P50,"Preamplifier, 50 GHz"
+N9010B-B25,25 MHz analysis bandwidth
+N9010B-B40,40 MHz analysis bandwidth
+N9010B-B85,85 MHz analysis bandwidth
+N9010B-B1X,160 MHz analysis bandwidth hardware
+N9010B-B1Y,Analysis bandwidth extension to 160 MHz
+N9010B-MPB,Microwave preselector bypass
+N9010B-LNP,Low noise path
+N9010B-FS1,Fast sweep capability
+N9010B-FS2,Enhanced fast sweep speed
+N9010B-DP2,Digital processor with 2 GB capture memory
+N9010B-DP4,Digital processor with 4 GB capture memory
+N9010B-CR3,"Connector, rear panel second IF output"
+N9010B-PFR,Precision frequency reference
+N9010B-RT1,"Real-time spectrum analyzer, basic detection"
+N9010B-RT2,"Real-time spectrum analyzer, optimum detection"
+N9010B-RTL,Real-time data link / real-time I/Q streaming
+N9010B-EMC,Basic EMI precompliance features
+N9010B-SSD,Removable solid-state drive
+N9010B-PRC,Portable configuration
+N9010B-UK6,Commercial calibration certificate with test data
+N9010B-1A7,ISO 17025 compliant calibration
+N9010B-A6J,ANSI Z540 compliant calibration
 N9020B-503,"Frequency range, 10 Hz to 3.6 GHz"
 N9020B-508,"Frequency range, 10 Hz to 8.4 GHz"
 N9020B-513,"Frequency range, 10 Hz to 13.6 GHz"
@@ -39,225 +65,930 @@ N9020B-P26,"Preamplifier, 26.5 GHz"
 N9020B-P32,"Preamplifier, 32 GHz"
 N9020B-P44,"Preamplifier, 44 GHz"
 N9020B-P50,"Preamplifier, 50 GHz"
-N9020B-B25,"Analysis bandwidth, 25 MHz (Standard)"
-N9020B-B40,"Analysis bandwidth, 40 MHz"
-N9020B-B1X,"Analysis bandwidth, 160 MHz"
+N9020B-B25,25 MHz analysis bandwidth
+N9020B-B40,40 MHz analysis bandwidth
+N9020B-B85,85 MHz analysis bandwidth
+N9020B-B1X,160 MHz analysis bandwidth hardware
+N9020B-B1Y,Analysis bandwidth extension to 160 MHz
 N9020B-MPB,Microwave preselector bypass
+N9020B-LNP,Low noise path
+N9020B-FS1,Fast sweep capability
+N9020B-FS2,Enhanced fast sweep speed
+N9020B-DP2,Digital processor with 2 GB capture memory
+N9020B-DP4,Digital processor with 4 GB capture memory
+N9020B-CR3,"Connector, rear panel second IF output"
 N9020B-PFR,Precision frequency reference
-N9020B-EA3,"Electronic attenuator, 3.6 GHz"
-N9020B-RT1,Real-time analysis up to 160 MHz
-N9020B-EDP,Enhanced display package
-N9020B-EMC,Basic EMC functionality
-N9085EM0E,5G NR measurement application
-N9080EM0E,LTE/LTE-Advanced FDD measurement application
-N9077EM0E,WLAN 802.11a/b/g/j/p/n/af/ah measurement application
-N9077EM1E,WLAN 802.11ac/ax/be measurement application
-N9081EM0E,Bluetooth measurement application
-N9068EM0E,Phase noise measurement application
-N9069EM0E,Noise figure measurement application
-N9064EM0E,VXA vector signal analysis measurement application
-N9067EM0E,Pulse measurement application
-N9020B-1A7,ISO 17025 compliant calibration
-N9020B-A6J,ANSI Z540-1-1994 compliant calibration
+N9020B-RT1,"Real-time spectrum analyzer, basic detection"
+N9020B-RT2,"Real-time spectrum analyzer, optimum detection"
+N9020B-RTL,Real-time data link / real-time I/Q streaming
+N9020B-EMC,Basic EMI precompliance features
+N9020B-SSD,Removable solid-state drive
+N9020B-PRC,Portable configuration
 N9020B-UK6,Commercial calibration certificate with test data
-R-50C-011-3,Calibration Assurance Plan - 3 years
-R-50C-011-5,Calibration Assurance Plan - 5 years
-R-51B-001-3C,Warranty Assurance Plan - 3 years
-R-51B-001-5C,Warranty Assurance Plan - 5 years
-N9020B-DP2,"Digital processor, 2 GB capture memory"
-N9020B-LNP,Low noise path 
-N9020B-EDP,Enhanced display package 
-N9020B-EMC,Basic EMC functionality 
-N9020B-CR3,Wideband IF output (rear connector
-N9020B-CRP,Programmable IF output
-N9020B-ALV,Auxiliary log video output 
-N9020B-1CP,Rack mount and handle kit
-N9020B-KYB,USB Keyboard 
-N9020B-MSE,USB Mouse
-N9020B-SSD,Additional removable solid state drive
-N9020B-MTU,Multi-touch user interface upgrade
-N9020B-PC7,"Intel i7 processor, 32 GB RAM, Removable SSD"
-N9020B-W10,Windows 10 operating system
-N6141EM0E,VSA (Vector Signal Analysis) measurement application
-N9020B-DP4,"Digital processor, 4 GB capture memory"
-N9020B-EP2,Enhanced phase noise performance
-N9020B-FSA,2 dB step mechanical attenuator (Fine step attenuator)
-N9054EM0E,V2X (Vehicle-to-Everything) measurement application
-N9054EM1E,"V2X (Vehicle-to-Everything) measurement application, 802.11p"
-N9060EM1E-1FP,PowerSuite measurement application
-N9062EM0E,SCPI language compatibility measurement application
-N9063EM0E,Analog demodulation measurement application
-N9071EM0E,GSM/EDGE measurement application
-N9072EM0E,cdma2000/1xEV-DO measurement application
-N9073EM0E,W-CDMA/HSPA+ measurement application
-N9076EM0E,1xEV-DO measurement application
-N9079EM0E,TD-SCDMA/HSPA measurement application
-N9080EM3E,"LTE FDD measurement application, multi-standard"
-N9080EM4E,LTE-Advanced FDD measurement application
-N9082EM0E,LTE/LTE-Advanced TDD measurement application
-N9083EM0E,Multi-Standard Radio (MSR) measurement application
-N9084EM0E,Short Range Communications measurement application
-N9085EM0E-1FP,5G NR (New Radio) measurement application
-N90EMEDPB,Enhanced display package (Upgrade)
-N90EMEMCB,Basic EMC functionality (Upgrade)
-N90EMESCB,External source control (Upgrade)
-N90EMFP2B,Enhanced phase noise performance (Upgrade)
-N90EMFT1B,Fast sweep capability (Upgrade)
-N90EMFT2B,Enhanced fast sweep speed (Upgrade)
-N90EMPSMB,PowerSuite measurement application (Upgrade)
-N90EMTDSB,Time domain scan functionality (Upgrade)
-U9361Y_RCL,Receiver Calibrator (RCal) Control License
-N6141EM0E,"EMI measurement application, multi-touch UI"
-N9010B-MTU,Multi-touch user interface / multi-touch upgrade
-N9010B-PC7,Windows 7 operating system
-N9010B-SSD,Solid-state drive
-N9010B-W10,Windows 10 operating system
-N9010B-532,"Frequency range, 10 Hz to 3.6 GHz"
-N9010B-B25,25 MHz analysis bandwidth
-N9010B-B40,40 MHz analysis bandwidth
-N9010B-DP2,Digital processor / digital processing hardware option
-N9010B-EP5,Enhanced phase-noise performance option
-N9010B-EXM,External mixing capability / external mixing measurement support
-N9010B-FS1,Fast sweep speed
-N9010B-FS2,Enhanced fast sweep speed
-N9010B-MPB,Microwave preselector bypass
-N9010B-P32,"Preamplifier, 100 kHz to 3.6 GHz"
-N9010B-RTL,Real-time spectrum analysis / real-time capability license
-N9060EM1E-1FP,"PowerSuite measurement application, perpetual fixed license"
-N9068EM0E-1FP,"Phase Noise measurement application, perpetual fixed license"
-N9000B-SSD,Solid-state drive
-N9000B-W10,Windows 10 operating system
-N9000B-B25,25 MHz analysis bandwidth
-N9000B-B40,40 MHz analysis bandwidth
-N9000B-B85,85 MHz analysis bandwidth
-N9000B-B1X,160 MHz analysis bandwidth
-N9000B-B2X,255 MHz analysis bandwidth
-N9000B-FS1,Fast sweep speed
-N9000B-FS2,Enhanced fast sweep speed
-N9000B-FSA,Fine resolution step attenuator
-N9000B-P03,Preamplifier for low-frequency range
-N9000B-P08,Preamplifier to 8.4 GHz
-N9000B-P13,Preamplifier to 13.6 GHz
-N9000B-P26,Preamplifier to 26.5 GHz
-N9000B-P32,Preamplifier to 3.6 GHz
-N9000B-P44,Preamplifier to 44 GHz
-N9000B-MPB,Microwave preselector bypass
-N9000B-RTL,Real-time spectrum analysis license/capability
-N9000B-DP2,Digital processing hardware option
-N9000B-503,Frequency range to 3.0 GHz
-N9000B-507,Frequency range to 7.5 GHz
-N9000B-513,Frequency range to 13.6 GHz
-N9000B-526,Frequency range to 26.5 GHz
-N9000B-532,Frequency range to 3.6 GHz
-N9000B-544,Frequency range to 44 GHz
-N9000B-550,Frequency range to 50 GHz
-N9000B-508,Frequency range to 8.4 GHz
-N9000B-590,Frequency range to 90 GHz
-N9000B-5CX,Frequency range to 110 GHz
-N9010B-B85,85 MHz analysis bandwidth
-N9010B-B1X,160 MHz analysis bandwidth
-N9010B-B2X,255 MHz analysis bandwidth
-N9010B-FSA,Fine resolution step attenuator
-N9010B-P03,Preamplifier for low-frequency range
-N9010B-P08,Preamplifier to 8.4 GHz
-N9010B-P13,Preamplifier to 13.6 GHz
-N9010B-P26,Preamplifier to 26.5 GHz
-N9010B-P44,Preamplifier to 44 GHz
-N9010B-503,Frequency range to 3.0 GHz
-N9010B-507,Frequency range to 7.5 GHz
-N9010B-513,Frequency range to 13.6 GHz
-N9010B-526,Frequency range to 26.5 GHz
-N9010B-544,Frequency range to 44 GHz
-N9010B-550,Frequency range to 50 GHz
-N9010B-508,Frequency range to 8.4 GHz
-N9010B-590,Frequency range to 90 GHz
-N9010B-5CX,Frequency range to 110 GHz
-N9030B-SSD,Solid-state drive
-N9030B-W10,Windows 10 operating system
+N9020B-1A7,ISO 17025 compliant calibration
+N9020B-A6J,ANSI Z540 compliant calibration
+N9030B-503,"Frequency range, 10 Hz to 3.6 GHz"
+N9030B-508,"Frequency range, 10 Hz to 8.4 GHz"
+N9030B-513,"Frequency range, 10 Hz to 13.6 GHz"
+N9030B-526,"Frequency range, 10 Hz to 26.5 GHz"
+N9030B-532,"Frequency range, 10 Hz to 32 GHz"
+N9030B-544,"Frequency range, 10 Hz to 44 GHz"
+N9030B-550,"Frequency range, 10 Hz to 50 GHz"
+N9030B-P03,"Preamplifier, 3.6 GHz"
+N9030B-P08,"Preamplifier, 8.4 GHz"
+N9030B-P13,"Preamplifier, 13.6 GHz"
+N9030B-P26,"Preamplifier, 26.5 GHz"
+N9030B-P32,"Preamplifier, 32 GHz"
+N9030B-P44,"Preamplifier, 44 GHz"
+N9030B-P50,"Preamplifier, 50 GHz"
 N9030B-B25,25 MHz analysis bandwidth
 N9030B-B40,40 MHz analysis bandwidth
 N9030B-B85,85 MHz analysis bandwidth
-N9030B-B1X,160 MHz analysis bandwidth
-N9030B-B2X,255 MHz analysis bandwidth
-N9030B-FS1,Fast sweep speed
-N9030B-FS2,Enhanced fast sweep speed
-N9030B-FSA,Fine resolution step attenuator
-N9030B-P03,Preamplifier for low-frequency range
-N9030B-P08,Preamplifier to 8.4 GHz
-N9030B-P13,Preamplifier to 13.6 GHz
-N9030B-P26,Preamplifier to 26.5 GHz
-N9030B-P32,Preamplifier to 3.6 GHz
-N9030B-P44,Preamplifier to 44 GHz
+N9030B-B1X,160 MHz analysis bandwidth hardware
+N9030B-B1Y,Analysis bandwidth extension to 160 MHz
 N9030B-MPB,Microwave preselector bypass
-N9030B-RTL,Real-time spectrum analysis license/capability
-N9030B-DP2,Digital processing hardware option
-N9030B-503,Frequency range to 3.0 GHz
-N9030B-507,Frequency range to 7.5 GHz
-N9030B-513,Frequency range to 13.6 GHz
-N9030B-526,Frequency range to 26.5 GHz
-N9030B-532,Frequency range to 3.6 GHz
-N9030B-544,Frequency range to 44 GHz
-N9030B-550,Frequency range to 50 GHz
-N9030B-508,Frequency range to 8.4 GHz
-N9030B-590,Frequency range to 90 GHz
-N9030B-5CX,Frequency range to 110 GHz
-N9040B-SSD,Solid-state drive
-N9040B-W10,Windows 10 operating system
-N9040B-B25,25 MHz analysis bandwidth
-N9040B-B40,40 MHz analysis bandwidth
-N9040B-B85,85 MHz analysis bandwidth
-N9040B-B1X,160 MHz analysis bandwidth
-N9040B-B2X,255 MHz analysis bandwidth
-N9040B-FS1,Fast sweep speed
-N9040B-FS2,Enhanced fast sweep speed
-N9040B-FSA,Fine resolution step attenuator
-N9040B-P03,Preamplifier for low-frequency range
-N9040B-P08,Preamplifier to 8.4 GHz
-N9040B-P13,Preamplifier to 13.6 GHz
-N9040B-P26,Preamplifier to 26.5 GHz
-N9040B-P32,Preamplifier to 3.6 GHz
-N9040B-P44,Preamplifier to 44 GHz
-N9040B-MPB,Microwave preselector bypass
-N9040B-RTL,Real-time spectrum analysis license/capability
-N9040B-DP2,Digital processing hardware option
-N9040B-503,Frequency range to 3.0 GHz
-N9040B-507,Frequency range to 7.5 GHz
-N9040B-513,Frequency range to 13.6 GHz
-N9040B-526,Frequency range to 26.5 GHz
-N9040B-532,Frequency range to 3.6 GHz
-N9040B-544,Frequency range to 44 GHz
-N9040B-550,Frequency range to 50 GHz
-N9040B-508,Frequency range to 8.4 GHz
-N9040B-590,Frequency range to 90 GHz
-N9040B-5CX,Frequency range to 110 GHz
-N9041B-SSD,Solid-state drive
-N9041B-W10,Windows 10 operating system
-N9041B-B25,25 MHz analysis bandwidth
-N9041B-B40,40 MHz analysis bandwidth
-N9041B-B85,85 MHz analysis bandwidth
-N9041B-B1X,160 MHz analysis bandwidth
-N9041B-B2X,255 MHz analysis bandwidth
-N9041B-FS1,Fast sweep speed
-N9041B-FS2,Enhanced fast sweep speed
-N9041B-FSA,Fine resolution step attenuator
-N9041B-P03,Preamplifier for low-frequency range
-N9041B-P08,Preamplifier to 8.4 GHz
-N9041B-P13,Preamplifier to 13.6 GHz
-N9041B-P26,Preamplifier to 26.5 GHz
-N9041B-P32,Preamplifier to 3.6 GHz
-N9041B-P44,Preamplifier to 44 GHz
-N9041B-MPB,Microwave preselector bypass
-N9041B-RTL,Real-time spectrum analysis license/capability
-N9041B-DP2,Digital processing hardware option
-N9041B-503,Frequency range to 3.0 GHz
-N9041B-507,Frequency range to 7.5 GHz
-N9041B-513,Frequency range to 13.6 GHz
-N9041B-526,Frequency range to 26.5 GHz
-N9041B-532,Frequency range to 3.6 GHz
-N9041B-544,Frequency range to 44 GHz
-N9041B-550,Frequency range to 50 GHz
-N9041B-508,Frequency range to 8.4 GHz
-N9041B-590,Frequency range to 90 GHz
-N9041B-5CX,Frequency range to 110 GHz
-N9060EM1E-1FP,"PowerSuite measurement application, perpetual fixed license"
-N9068EM0E-1FP,"Phase Noise measurement application, perpetual fixed license"
+N9030B-LNP,Low noise path
+N9030B-FS1,Fast sweep capability
+N9030B-FS2,Enhanced fast sweep speed
+N9030B-DP2,Digital processor with 2 GB capture memory
+N9030B-DP4,Digital processor with 4 GB capture memory
+N9030B-CR3,"Connector, rear panel second IF output"
+N9030B-PFR,Precision frequency reference
+N9030B-RT1,"Real-time spectrum analyzer, basic detection"
+N9030B-RT2,"Real-time spectrum analyzer, optimum detection"
+N9030B-RTL,Real-time data link / real-time I/Q streaming
+N9030B-EMC,Basic EMI precompliance features
+N9030B-SSD,Removable solid-state drive
+N9030B-PRC,Portable configuration
+N9030B-UK6,Commercial calibration certificate with test data
+N9030B-1A7,ISO 17025 compliant calibration
+N9030B-A6J,ANSI Z540 compliant calibration
+N9040B-526,"Frequency range, 3 Hz to 26.5 GHz"
+N9040B-544,"Frequency range, 3 Hz to 44 GHz"
+N9040B-550,"Frequency range, 3 Hz to 50 GHz"
+N9040B-P50,"Preamplifier, 100 kHz to 50 GHz"
+N9040B-H1G,1 GHz analysis bandwidth
+N9040B-B2X,2 GHz analysis bandwidth hardware
+N9040B-B5X,5 GHz analysis bandwidth hardware
+N9040B-BUF,255 MHz to 510 MHz analysis bandwidth upgrade
+N9040B-DP4,Digital processor with 4 GB I/Q capture memory
+N9040B-EP0,Enhanced phase noise performance
+N9040B-EXM,External mixing support up to millimeter-wave bands
+N9040B-FBP,Full bypass path / microwave preselector bypass
+N9040B-FS1,Fast sweep capability
+N9040B-FS2,Enhanced fast sweep capability
+N9040B-LFE,Low frequency enable
+N9040B-LNP,Low noise path
+N9040B-NF2,Noise floor extension
+N9040B-NUL,LO/IM nulling
+N9040B-PFR,Precision frequency reference
+N9040B-RTL,Real-time data link for I/Q streaming
+N9040B-MTU,Multi-touch user interface
+N9040B-PC6,"Hex-core high performance processor, 16 GB RAM"
+N9040B-PC8,"High performance processor, 32 GB RAM"
+N9040B-SSD,Removable solid-state drive
+N9040B-UK6,Commercial calibration certificate with test data
+N9040B-1A7,ISO 17025 compliant calibration
+N9040B-A6J,ANSI Z540 compliant calibration
+N9041B-526,"Frequency range, 3 Hz to 26.5 GHz"
+N9041B-544,"Frequency range, 3 Hz to 44 GHz"
+N9041B-550,"Frequency range, 3 Hz to 50 GHz"
+N9041B-P50,"Preamplifier, 100 kHz to 50 GHz"
+N9041B-H1G,1 GHz analysis bandwidth
+N9041B-B2X,2 GHz analysis bandwidth hardware
+N9041B-B5X,5 GHz analysis bandwidth hardware
+N9041B-BUF,255 MHz to 510 MHz analysis bandwidth upgrade
+N9041B-DP4,Digital processor with 4 GB I/Q capture memory
+N9041B-EP0,Enhanced phase noise performance
+N9041B-EXM,External mixing support up to millimeter-wave bands
+N9041B-FBP,Full bypass path / microwave preselector bypass
+N9041B-FS1,Fast sweep capability
+N9041B-FS2,Enhanced fast sweep capability
+N9041B-LFE,Low frequency enable
+N9041B-LNP,Low noise path
+N9041B-NF2,Noise floor extension
+N9041B-NUL,LO/IM nulling
+N9041B-PFR,Precision frequency reference
+N9041B-RTL,Real-time data link for I/Q streaming
+N9041B-MTU,Multi-touch user interface
+N9041B-PC6,"Hex-core high performance processor, 16 GB RAM"
+N9041B-PC8,"High performance processor, 32 GB RAM"
+N9041B-SSD,Removable solid-state drive
+N9041B-UK6,Commercial calibration certificate with test data
+N9041B-1A7,ISO 17025 compliant calibration
+N9041B-A6J,ANSI Z540 compliant calibration
+N9060EM0E-1FP,Spectrum Analyzer Measurement Application; 1-year fixed perpetual license
+N9060EM0E-1TP,Spectrum Analyzer Measurement Application; 1-year transportable perpetual license
+N9060EM0E-1NP,Spectrum Analyzer Measurement Application; 1-year node-locked perpetual license
+N9060EM0E-1FL,Spectrum Analyzer Measurement Application; 1-year floating license
+N9060EM0E-1UL,Spectrum Analyzer Measurement Application; 1-year USB portable license
+N9061EM0E-1FP,EMI Measurement Application; 1-year fixed perpetual license
+N9061EM0E-1TP,EMI Measurement Application; 1-year transportable perpetual license
+N9061EM0E-1NP,EMI Measurement Application; 1-year node-locked perpetual license
+N9061EM0E-1FL,EMI Measurement Application; 1-year floating license
+N9061EM0E-1UL,EMI Measurement Application; 1-year USB portable license
+N9062EM0E-1FP,SCPI Command Language Compatibility; 1-year fixed perpetual license
+N9062EM0E-1TP,SCPI Command Language Compatibility; 1-year transportable perpetual license
+N9062EM0E-1NP,SCPI Command Language Compatibility; 1-year node-locked perpetual license
+N9062EM0E-1FL,SCPI Command Language Compatibility; 1-year floating license
+N9062EM0E-1UL,SCPI Command Language Compatibility; 1-year USB portable license
+N9063EM0E-1FP,Analog Demodulation Measurement Application; 1-year fixed perpetual license
+N9063EM0E-1TP,Analog Demodulation Measurement Application; 1-year transportable perpetual license
+N9063EM0E-1NP,Analog Demodulation Measurement Application; 1-year node-locked perpetual license
+N9063EM0E-1FL,Analog Demodulation Measurement Application; 1-year floating license
+N9063EM0E-1UL,Analog Demodulation Measurement Application; 1-year USB portable license
+N9064EM0E-1FP,Vector Signal Analysis / VXA Measurement Application; 1-year fixed perpetual license
+N9064EM0E-1TP,Vector Signal Analysis / VXA Measurement Application; 1-year transportable perpetual license
+N9064EM0E-1NP,Vector Signal Analysis / VXA Measurement Application; 1-year node-locked perpetual license
+N9064EM0E-1FL,Vector Signal Analysis / VXA Measurement Application; 1-year floating license
+N9064EM0E-1UL,Vector Signal Analysis / VXA Measurement Application; 1-year USB portable license
+N9068EM0E-1FP,Phase Noise Measurement Application; 1-year fixed perpetual license
+N9068EM0E-1TP,Phase Noise Measurement Application; 1-year transportable perpetual license
+N9068EM0E-1NP,Phase Noise Measurement Application; 1-year node-locked perpetual license
+N9068EM0E-1FL,Phase Noise Measurement Application; 1-year floating license
+N9068EM0E-1UL,Phase Noise Measurement Application; 1-year USB portable license
+N9071EM0E-1FP,GSM/EDGE/Evo Measurement Application; 1-year fixed perpetual license
+N9071EM0E-1TP,GSM/EDGE/Evo Measurement Application; 1-year transportable perpetual license
+N9071EM0E-1NP,GSM/EDGE/Evo Measurement Application; 1-year node-locked perpetual license
+N9071EM0E-1FL,GSM/EDGE/Evo Measurement Application; 1-year floating license
+N9071EM0E-1UL,GSM/EDGE/Evo Measurement Application; 1-year USB portable license
+N9072EM0E-1FP,cdma2000 Measurement Application; 1-year fixed perpetual license
+N9072EM0E-1TP,cdma2000 Measurement Application; 1-year transportable perpetual license
+N9072EM0E-1NP,cdma2000 Measurement Application; 1-year node-locked perpetual license
+N9072EM0E-1FL,cdma2000 Measurement Application; 1-year floating license
+N9072EM0E-1UL,cdma2000 Measurement Application; 1-year USB portable license
+N9073EM0E-1FP,W-CDMA/HSPA+ Measurement Application; 1-year fixed perpetual license
+N9073EM0E-1TP,W-CDMA/HSPA+ Measurement Application; 1-year transportable perpetual license
+N9073EM0E-1NP,W-CDMA/HSPA+ Measurement Application; 1-year node-locked perpetual license
+N9073EM0E-1FL,W-CDMA/HSPA+ Measurement Application; 1-year floating license
+N9073EM0E-1UL,W-CDMA/HSPA+ Measurement Application; 1-year USB portable license
+N9074EM0E-1FP,1xEV-DO Measurement Application; 1-year fixed perpetual license
+N9074EM0E-1TP,1xEV-DO Measurement Application; 1-year transportable perpetual license
+N9074EM0E-1NP,1xEV-DO Measurement Application; 1-year node-locked perpetual license
+N9074EM0E-1FL,1xEV-DO Measurement Application; 1-year floating license
+N9074EM0E-1UL,1xEV-DO Measurement Application; 1-year USB portable license
+N9075EM0E-1FP,LTE/LTE-Advanced FDD Measurement Application; 1-year fixed perpetual license
+N9075EM0E-1TP,LTE/LTE-Advanced FDD Measurement Application; 1-year transportable perpetual license
+N9075EM0E-1NP,LTE/LTE-Advanced FDD Measurement Application; 1-year node-locked perpetual license
+N9075EM0E-1FL,LTE/LTE-Advanced FDD Measurement Application; 1-year floating license
+N9075EM0E-1UL,LTE/LTE-Advanced FDD Measurement Application; 1-year USB portable license
+N9076EM0E-1FP,LTE/LTE-Advanced TDD Measurement Application; 1-year fixed perpetual license
+N9076EM0E-1TP,LTE/LTE-Advanced TDD Measurement Application; 1-year transportable perpetual license
+N9076EM0E-1NP,LTE/LTE-Advanced TDD Measurement Application; 1-year node-locked perpetual license
+N9076EM0E-1FL,LTE/LTE-Advanced TDD Measurement Application; 1-year floating license
+N9076EM0E-1UL,LTE/LTE-Advanced TDD Measurement Application; 1-year USB portable license
+N9077EM0E-1FP,WLAN 802.11a/b/g/n/ac/ax Measurement Application; 1-year fixed perpetual license
+N9077EM0E-1TP,WLAN 802.11a/b/g/n/ac/ax Measurement Application; 1-year transportable perpetual license
+N9077EM0E-1NP,WLAN 802.11a/b/g/n/ac/ax Measurement Application; 1-year node-locked perpetual license
+N9077EM0E-1FL,WLAN 802.11a/b/g/n/ac/ax Measurement Application; 1-year floating license
+N9077EM0E-1UL,WLAN 802.11a/b/g/n/ac/ax Measurement Application; 1-year USB portable license
+N9078EM0E-1FP,Bluetooth Measurement Application; 1-year fixed perpetual license
+N9078EM0E-1TP,Bluetooth Measurement Application; 1-year transportable perpetual license
+N9078EM0E-1NP,Bluetooth Measurement Application; 1-year node-locked perpetual license
+N9078EM0E-1FL,Bluetooth Measurement Application; 1-year floating license
+N9078EM0E-1UL,Bluetooth Measurement Application; 1-year USB portable license
+N9080EM0E-1FP,LTE/LTE-Advanced Measurement Application; 1-year fixed perpetual license
+N9080EM0E-1TP,LTE/LTE-Advanced Measurement Application; 1-year transportable perpetual license
+N9080EM0E-1NP,LTE/LTE-Advanced Measurement Application; 1-year node-locked perpetual license
+N9080EM0E-1FL,LTE/LTE-Advanced Measurement Application; 1-year floating license
+N9080EM0E-1UL,LTE/LTE-Advanced Measurement Application; 1-year USB portable license
+N9081EM0E-1FP,Bluetooth Measurement Application; 1-year fixed perpetual license
+N9081EM0E-1TP,Bluetooth Measurement Application; 1-year transportable perpetual license
+N9081EM0E-1NP,Bluetooth Measurement Application; 1-year node-locked perpetual license
+N9081EM0E-1FL,Bluetooth Measurement Application; 1-year floating license
+N9081EM0E-1UL,Bluetooth Measurement Application; 1-year USB portable license
+N9082EM0E-1FP,LTE TDD Measurement Application; 1-year fixed perpetual license
+N9082EM0E-1TP,LTE TDD Measurement Application; 1-year transportable perpetual license
+N9082EM0E-1NP,LTE TDD Measurement Application; 1-year node-locked perpetual license
+N9082EM0E-1FL,LTE TDD Measurement Application; 1-year floating license
+N9082EM0E-1UL,LTE TDD Measurement Application; 1-year USB portable license
+N9083EM0E-1FP,Multi-Standard Radio Measurement Application; 1-year fixed perpetual license
+N9083EM0E-1TP,Multi-Standard Radio Measurement Application; 1-year transportable perpetual license
+N9083EM0E-1NP,Multi-Standard Radio Measurement Application; 1-year node-locked perpetual license
+N9083EM0E-1FL,Multi-Standard Radio Measurement Application; 1-year floating license
+N9083EM0E-1UL,Multi-Standard Radio Measurement Application; 1-year USB portable license
+N9085EM0E-1FP,5G NR Measurement Application; 1-year fixed perpetual license
+N9085EM0E-1TP,5G NR Measurement Application; 1-year transportable perpetual license
+N9085EM0E-1NP,5G NR Measurement Application; 1-year node-locked perpetual license
+N9085EM0E-1FL,5G NR Measurement Application; 1-year floating license
+N9085EM0E-1UL,5G NR Measurement Application; 1-year USB portable license
+N9089EM0E-1FP,Short Range Communications / IoT Measurement Application; 1-year fixed perpetual license
+N9089EM0E-1TP,Short Range Communications / IoT Measurement Application; 1-year transportable perpetual license
+N9089EM0E-1NP,Short Range Communications / IoT Measurement Application; 1-year node-locked perpetual license
+N9089EM0E-1FL,Short Range Communications / IoT Measurement Application; 1-year floating license
+N9089EM0E-1UL,Short Range Communications / IoT Measurement Application; 1-year USB portable license
+N90E1EDPB-1FP,PathWave X-Series Measurement Application Bundle / electronic delivery; 1-year fixed perpetual license
+N90E1EDPB-1TP,PathWave X-Series Measurement Application Bundle / electronic delivery; 1-year transportable perpetual license
+N90E1EDPB-1NP,PathWave X-Series Measurement Application Bundle / electronic delivery; 1-year node-locked perpetual license
+N90E1EDPB-1FL,PathWave X-Series Measurement Application Bundle / electronic delivery; 1-year floating license
+N90E1EDPB-1UL,PathWave X-Series Measurement Application Bundle / electronic delivery; 1-year USB portable license
+89601B-1FP,PathWave Vector Signal Analysis software; 1-year fixed perpetual license
+89601B-1TP,PathWave Vector Signal Analysis software; 1-year transportable perpetual license
+89601B-1NP,PathWave Vector Signal Analysis software; 1-year node-locked perpetual license
+89601B-1FL,PathWave Vector Signal Analysis software; 1-year floating license
+89601B-1UL,PathWave Vector Signal Analysis software; 1-year USB portable license
+E5080B-220,"2-port test set, 20 GHz class"
+E5080B-240,"4-port test set, 20 GHz class"
+E5080B-245,"4-port test set, 26.5 GHz class"
+E5080B-250,"4-port test set, 44/50 GHz class"
+E5080B-260,"4-port test set, 53 GHz class"
+E5080B-2K0,"2-port test set, model-specific frequency range"
+E5080B-4K0,"4-port test set, model-specific frequency range"
+E5080B-09A,"Spectrum analysis hardware option, low-frequency range"
+E5080B-09B,"Spectrum analysis hardware option, mid-frequency range"
+E5080B-09C,"Spectrum analysis hardware option, high-frequency range"
+E5080B-120,Internal bias tees for 2-port options
+E5080B-140,Internal bias tees for 4-port options
+E5080B-021,Internal pulse modulators for first source
+E5080B-022,Internal pulse modulators for second source
+E5080B-190,Vector signal analysis hardware capability
+E5080B-1E1,High stability frequency reference
+E5080B-UNQ,Standard stability timebase
+E5080B-UK6,Commercial calibration certificate with test data
+E5080B-1A7,ISO 17025 compliant calibration
+E5080B-A6J,ANSI Z540 compliant calibration
+E5081A-220,"2-port test set, 20 GHz class"
+E5081A-240,"4-port test set, 20 GHz class"
+E5081A-245,"4-port test set, 26.5 GHz class"
+E5081A-250,"4-port test set, 44/50 GHz class"
+E5081A-260,"4-port test set, 53 GHz class"
+E5081A-2K0,"2-port test set, model-specific frequency range"
+E5081A-4K0,"4-port test set, model-specific frequency range"
+E5081A-09A,"Spectrum analysis hardware option, low-frequency range"
+E5081A-09B,"Spectrum analysis hardware option, mid-frequency range"
+E5081A-09C,"Spectrum analysis hardware option, high-frequency range"
+E5081A-120,Internal bias tees for 2-port options
+E5081A-140,Internal bias tees for 4-port options
+E5081A-021,Internal pulse modulators for first source
+E5081A-022,Internal pulse modulators for second source
+E5081A-190,Vector signal analysis hardware capability
+E5081A-1E1,High stability frequency reference
+E5081A-UNQ,Standard stability timebase
+E5081A-UK6,Commercial calibration certificate with test data
+E5081A-1A7,ISO 17025 compliant calibration
+E5081A-A6J,ANSI Z540 compliant calibration
+S96001B-1FP,Time domain analysis; 1-year fixed perpetual license
+S96001B-1TP,Time domain analysis; 1-year transportable perpetual license
+S96001B-1NP,Time domain analysis; 1-year node-locked perpetual license
+S96001B-1FL,Time domain analysis; 1-year floating license
+S96001B-1UL,Time domain analysis; 1-year USB portable license
+S96002B-1FP,Scalar mixer/converter measurements; 1-year fixed perpetual license
+S96002B-1TP,Scalar mixer/converter measurements; 1-year transportable perpetual license
+S96002B-1NP,Scalar mixer/converter measurements; 1-year node-locked perpetual license
+S96002B-1FL,Scalar mixer/converter measurements; 1-year floating license
+S96002B-1UL,Scalar mixer/converter measurements; 1-year USB portable license
+S96003B-1FP,Vector mixer/converter measurements; 1-year fixed perpetual license
+S96003B-1TP,Vector mixer/converter measurements; 1-year transportable perpetual license
+S96003B-1NP,Vector mixer/converter measurements; 1-year node-locked perpetual license
+S96003B-1FL,Vector mixer/converter measurements; 1-year floating license
+S96003B-1UL,Vector mixer/converter measurements; 1-year USB portable license
+S96004B-1FP,Embedded LO measurements; 1-year fixed perpetual license
+S96004B-1TP,Embedded LO measurements; 1-year transportable perpetual license
+S96004B-1NP,Embedded LO measurements; 1-year node-locked perpetual license
+S96004B-1FL,Embedded LO measurements; 1-year floating license
+S96004B-1UL,Embedded LO measurements; 1-year USB portable license
+S96005B-1FP,Gain compression measurements; 1-year fixed perpetual license
+S96005B-1TP,Gain compression measurements; 1-year transportable perpetual license
+S96005B-1NP,Gain compression measurements; 1-year node-locked perpetual license
+S96005B-1FL,Gain compression measurements; 1-year floating license
+S96005B-1UL,Gain compression measurements; 1-year USB portable license
+S96007B-1FP,Automatic fixture removal; 1-year fixed perpetual license
+S96007B-1TP,Automatic fixture removal; 1-year transportable perpetual license
+S96007B-1NP,Automatic fixture removal; 1-year node-locked perpetual license
+S96007B-1FL,Automatic fixture removal; 1-year floating license
+S96007B-1UL,Automatic fixture removal; 1-year USB portable license
+S96008B-1FP,Pulsed RF measurements; 1-year fixed perpetual license
+S96008B-1TP,Pulsed RF measurements; 1-year transportable perpetual license
+S96008B-1NP,Pulsed RF measurements; 1-year node-locked perpetual license
+S96008B-1FL,Pulsed RF measurements; 1-year floating license
+S96008B-1UL,Pulsed RF measurements; 1-year USB portable license
+S96010B-1FP,Time domain analysis; 1-year fixed perpetual license
+S96010B-1TP,Time domain analysis; 1-year transportable perpetual license
+S96010B-1NP,Time domain analysis; 1-year node-locked perpetual license
+S96010B-1FL,Time domain analysis; 1-year floating license
+S96010B-1UL,Time domain analysis; 1-year USB portable license
+S96011B-1FP,Enhanced time domain analysis; 1-year fixed perpetual license
+S96011B-1TP,Enhanced time domain analysis; 1-year transportable perpetual license
+S96011B-1NP,Enhanced time domain analysis; 1-year node-locked perpetual license
+S96011B-1FL,Enhanced time domain analysis; 1-year floating license
+S96011B-1UL,Enhanced time domain analysis; 1-year USB portable license
+S96024B-1FP,Pulse measurement software; 1-year fixed perpetual license
+S96024B-1TP,Pulse measurement software; 1-year transportable perpetual license
+S96024B-1NP,Pulse measurement software; 1-year node-locked perpetual license
+S96024B-1FL,Pulse measurement software; 1-year floating license
+S96024B-1UL,Pulse measurement software; 1-year USB portable license
+S96025B-1FP,Advanced pulse measurements; 1-year fixed perpetual license
+S96025B-1TP,Advanced pulse measurements; 1-year transportable perpetual license
+S96025B-1NP,Advanced pulse measurements; 1-year node-locked perpetual license
+S96025B-1FL,Advanced pulse measurements; 1-year floating license
+S96025B-1UL,Advanced pulse measurements; 1-year USB portable license
+S96029B-1FP,Noise figure measurements; 1-year fixed perpetual license
+S96029B-1TP,Noise figure measurements; 1-year transportable perpetual license
+S96029B-1NP,Noise figure measurements; 1-year node-locked perpetual license
+S96029B-1FL,Noise figure measurements; 1-year floating license
+S96029B-1UL,Noise figure measurements; 1-year USB portable license
+S96082B-1FP,Materials measurements; 1-year fixed perpetual license
+S96082B-1TP,Materials measurements; 1-year transportable perpetual license
+S96082B-1NP,Materials measurements; 1-year node-locked perpetual license
+S96082B-1FL,Materials measurements; 1-year floating license
+S96082B-1UL,Materials measurements; 1-year USB portable license
+S96084B-1FP,Balanced measurements; 1-year fixed perpetual license
+S96084B-1TP,Balanced measurements; 1-year transportable perpetual license
+S96084B-1NP,Balanced measurements; 1-year node-locked perpetual license
+S96084B-1FL,Balanced measurements; 1-year floating license
+S96084B-1UL,Balanced measurements; 1-year USB portable license
+S96086B-1FP,Gain compression and intermodulation distortion; 1-year fixed perpetual license
+S96086B-1TP,Gain compression and intermodulation distortion; 1-year transportable perpetual license
+S96086B-1NP,Gain compression and intermodulation distortion; 1-year node-locked perpetual license
+S96086B-1FL,Gain compression and intermodulation distortion; 1-year floating license
+S96086B-1UL,Gain compression and intermodulation distortion; 1-year USB portable license
+S96089B-1FP,Differential and I/Q devices; 1-year fixed perpetual license
+S96089B-1TP,Differential and I/Q devices; 1-year transportable perpetual license
+S96089B-1NP,Differential and I/Q devices; 1-year node-locked perpetual license
+S96089B-1FL,Differential and I/Q devices; 1-year floating license
+S96089B-1UL,Differential and I/Q devices; 1-year USB portable license
+S96090B-1FP,Spectrum analysis software for ENA; 1-year fixed perpetual license
+S96090B-1TP,Spectrum analysis software for ENA; 1-year transportable perpetual license
+S96090B-1NP,Spectrum analysis software for ENA; 1-year node-locked perpetual license
+S96090B-1FL,Spectrum analysis software for ENA; 1-year floating license
+S96090B-1UL,Spectrum analysis software for ENA; 1-year USB portable license
+S96091B-1FP,Vector signal analysis support; 1-year fixed perpetual license
+S96091B-1TP,Vector signal analysis support; 1-year transportable perpetual license
+S96091B-1NP,Vector signal analysis support; 1-year node-locked perpetual license
+S96091B-1FL,Vector signal analysis support; 1-year floating license
+S96091B-1UL,Vector signal analysis support; 1-year USB portable license
+S96094B-1FP,Spectrum analysis / modulation distortion analysis; 1-year fixed perpetual license
+S96094B-1TP,Spectrum analysis / modulation distortion analysis; 1-year transportable perpetual license
+S96094B-1NP,Spectrum analysis / modulation distortion analysis; 1-year node-locked perpetual license
+S96094B-1FL,Spectrum analysis / modulation distortion analysis; 1-year floating license
+S96094B-1UL,Spectrum analysis / modulation distortion analysis; 1-year USB portable license
+S96097B-1FP,Spectrum analysis with high dynamic range features; 1-year fixed perpetual license
+S96097B-1TP,Spectrum analysis with high dynamic range features; 1-year transportable perpetual license
+S96097B-1NP,Spectrum analysis with high dynamic range features; 1-year node-locked perpetual license
+S96097B-1FL,Spectrum analysis with high dynamic range features; 1-year floating license
+S96097B-1UL,Spectrum analysis with high dynamic range features; 1-year USB portable license
+N5221B-020,IF access / configurable test set access
+N5221B-021,"Internal pulse modulators, source 1"
+N5221B-022,"Internal pulse modulators, source 2"
+N5221B-080,Frequency offset mode
+N5221B-081,Reference receiver switch
+N5221B-083,Frequency converter measurement capability
+N5221B-084,Embedded LO capability
+N5221B-086,Gain compression application support
+N5221B-088,Source phase control
+N5221B-089,Differential and I/Q measurements
+N5221B-090,Spectrum analyzer capability
+N5221B-100,Standard frequency reference
+N5221B-1E1,High stability frequency reference
+N5221B-200,"2-port, base test set configuration"
+N5221B-201,"2-port, single source, configurable test set"
+N5221B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5221B-219,"2-port, single source, extended power range and bias tees"
+N5221B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5221B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5221B-400,"4-port, base test set configuration"
+N5221B-401,"4-port, single source, configurable test set"
+N5221B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5221B-419,"4-port, single source, extended power range and bias tees"
+N5221B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5221B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5221B-UNY,Enhanced low phase noise performance
+N5221B-UNQ,Standard stability timebase
+N5221B-UK6,Commercial calibration certificate with test data
+N5221B-1A7,ISO 17025 compliant calibration
+N5221B-A6J,ANSI Z540 compliant calibration
+N5222B-020,IF access / configurable test set access
+N5222B-021,"Internal pulse modulators, source 1"
+N5222B-022,"Internal pulse modulators, source 2"
+N5222B-080,Frequency offset mode
+N5222B-081,Reference receiver switch
+N5222B-083,Frequency converter measurement capability
+N5222B-084,Embedded LO capability
+N5222B-086,Gain compression application support
+N5222B-088,Source phase control
+N5222B-089,Differential and I/Q measurements
+N5222B-090,Spectrum analyzer capability
+N5222B-100,Standard frequency reference
+N5222B-1E1,High stability frequency reference
+N5222B-200,"2-port, base test set configuration"
+N5222B-201,"2-port, single source, configurable test set"
+N5222B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5222B-219,"2-port, single source, extended power range and bias tees"
+N5222B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5222B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5222B-400,"4-port, base test set configuration"
+N5222B-401,"4-port, single source, configurable test set"
+N5222B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5222B-419,"4-port, single source, extended power range and bias tees"
+N5222B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5222B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5222B-UNY,Enhanced low phase noise performance
+N5222B-UNQ,Standard stability timebase
+N5222B-UK6,Commercial calibration certificate with test data
+N5222B-1A7,ISO 17025 compliant calibration
+N5222B-A6J,ANSI Z540 compliant calibration
+N5224B-020,IF access / configurable test set access
+N5224B-021,"Internal pulse modulators, source 1"
+N5224B-022,"Internal pulse modulators, source 2"
+N5224B-080,Frequency offset mode
+N5224B-081,Reference receiver switch
+N5224B-083,Frequency converter measurement capability
+N5224B-084,Embedded LO capability
+N5224B-086,Gain compression application support
+N5224B-088,Source phase control
+N5224B-089,Differential and I/Q measurements
+N5224B-090,Spectrum analyzer capability
+N5224B-100,Standard frequency reference
+N5224B-1E1,High stability frequency reference
+N5224B-200,"2-port, base test set configuration"
+N5224B-201,"2-port, single source, configurable test set"
+N5224B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5224B-219,"2-port, single source, extended power range and bias tees"
+N5224B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5224B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5224B-400,"4-port, base test set configuration"
+N5224B-401,"4-port, single source, configurable test set"
+N5224B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5224B-419,"4-port, single source, extended power range and bias tees"
+N5224B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5224B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5224B-UNY,Enhanced low phase noise performance
+N5224B-UNQ,Standard stability timebase
+N5224B-UK6,Commercial calibration certificate with test data
+N5224B-1A7,ISO 17025 compliant calibration
+N5224B-A6J,ANSI Z540 compliant calibration
+N5225B-020,IF access / configurable test set access
+N5225B-021,"Internal pulse modulators, source 1"
+N5225B-022,"Internal pulse modulators, source 2"
+N5225B-080,Frequency offset mode
+N5225B-081,Reference receiver switch
+N5225B-083,Frequency converter measurement capability
+N5225B-084,Embedded LO capability
+N5225B-086,Gain compression application support
+N5225B-088,Source phase control
+N5225B-089,Differential and I/Q measurements
+N5225B-090,Spectrum analyzer capability
+N5225B-100,Standard frequency reference
+N5225B-1E1,High stability frequency reference
+N5225B-200,"2-port, base test set configuration"
+N5225B-201,"2-port, single source, configurable test set"
+N5225B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5225B-219,"2-port, single source, extended power range and bias tees"
+N5225B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5225B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5225B-400,"4-port, base test set configuration"
+N5225B-401,"4-port, single source, configurable test set"
+N5225B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5225B-419,"4-port, single source, extended power range and bias tees"
+N5225B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5225B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5225B-UNY,Enhanced low phase noise performance
+N5225B-UNQ,Standard stability timebase
+N5225B-UK6,Commercial calibration certificate with test data
+N5225B-1A7,ISO 17025 compliant calibration
+N5225B-A6J,ANSI Z540 compliant calibration
+N5227B-020,IF access / configurable test set access
+N5227B-021,"Internal pulse modulators, source 1"
+N5227B-022,"Internal pulse modulators, source 2"
+N5227B-080,Frequency offset mode
+N5227B-081,Reference receiver switch
+N5227B-083,Frequency converter measurement capability
+N5227B-084,Embedded LO capability
+N5227B-086,Gain compression application support
+N5227B-088,Source phase control
+N5227B-089,Differential and I/Q measurements
+N5227B-090,Spectrum analyzer capability
+N5227B-100,Standard frequency reference
+N5227B-1E1,High stability frequency reference
+N5227B-200,"2-port, base test set configuration"
+N5227B-201,"2-port, single source, configurable test set"
+N5227B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5227B-219,"2-port, single source, extended power range and bias tees"
+N5227B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5227B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5227B-400,"4-port, base test set configuration"
+N5227B-401,"4-port, single source, configurable test set"
+N5227B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5227B-419,"4-port, single source, extended power range and bias tees"
+N5227B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5227B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5227B-UNY,Enhanced low phase noise performance
+N5227B-UNQ,Standard stability timebase
+N5227B-UK6,Commercial calibration certificate with test data
+N5227B-1A7,ISO 17025 compliant calibration
+N5227B-A6J,ANSI Z540 compliant calibration
+N5231B-020,IF access / configurable test set access
+N5231B-021,"Internal pulse modulators, source 1"
+N5231B-022,"Internal pulse modulators, source 2"
+N5231B-080,Frequency offset mode
+N5231B-081,Reference receiver switch
+N5231B-083,Frequency converter measurement capability
+N5231B-084,Embedded LO capability
+N5231B-086,Gain compression application support
+N5231B-088,Source phase control
+N5231B-089,Differential and I/Q measurements
+N5231B-090,Spectrum analyzer capability
+N5231B-100,Standard frequency reference
+N5231B-1E1,High stability frequency reference
+N5231B-200,"2-port, base test set configuration"
+N5231B-201,"2-port, single source, configurable test set"
+N5231B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5231B-219,"2-port, single source, extended power range and bias tees"
+N5231B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5231B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5231B-400,"4-port, base test set configuration"
+N5231B-401,"4-port, single source, configurable test set"
+N5231B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5231B-419,"4-port, single source, extended power range and bias tees"
+N5231B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5231B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5231B-UNY,Enhanced low phase noise performance
+N5231B-UNQ,Standard stability timebase
+N5231B-UK6,Commercial calibration certificate with test data
+N5231B-1A7,ISO 17025 compliant calibration
+N5231B-A6J,ANSI Z540 compliant calibration
+N5232B-020,IF access / configurable test set access
+N5232B-021,"Internal pulse modulators, source 1"
+N5232B-022,"Internal pulse modulators, source 2"
+N5232B-080,Frequency offset mode
+N5232B-081,Reference receiver switch
+N5232B-083,Frequency converter measurement capability
+N5232B-084,Embedded LO capability
+N5232B-086,Gain compression application support
+N5232B-088,Source phase control
+N5232B-089,Differential and I/Q measurements
+N5232B-090,Spectrum analyzer capability
+N5232B-100,Standard frequency reference
+N5232B-1E1,High stability frequency reference
+N5232B-200,"2-port, base test set configuration"
+N5232B-201,"2-port, single source, configurable test set"
+N5232B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5232B-219,"2-port, single source, extended power range and bias tees"
+N5232B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5232B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5232B-400,"4-port, base test set configuration"
+N5232B-401,"4-port, single source, configurable test set"
+N5232B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5232B-419,"4-port, single source, extended power range and bias tees"
+N5232B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5232B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5232B-UNY,Enhanced low phase noise performance
+N5232B-UNQ,Standard stability timebase
+N5232B-UK6,Commercial calibration certificate with test data
+N5232B-1A7,ISO 17025 compliant calibration
+N5232B-A6J,ANSI Z540 compliant calibration
+N5234B-020,IF access / configurable test set access
+N5234B-021,"Internal pulse modulators, source 1"
+N5234B-022,"Internal pulse modulators, source 2"
+N5234B-080,Frequency offset mode
+N5234B-081,Reference receiver switch
+N5234B-083,Frequency converter measurement capability
+N5234B-084,Embedded LO capability
+N5234B-086,Gain compression application support
+N5234B-088,Source phase control
+N5234B-089,Differential and I/Q measurements
+N5234B-090,Spectrum analyzer capability
+N5234B-100,Standard frequency reference
+N5234B-1E1,High stability frequency reference
+N5234B-200,"2-port, base test set configuration"
+N5234B-201,"2-port, single source, configurable test set"
+N5234B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5234B-219,"2-port, single source, extended power range and bias tees"
+N5234B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5234B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5234B-400,"4-port, base test set configuration"
+N5234B-401,"4-port, single source, configurable test set"
+N5234B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5234B-419,"4-port, single source, extended power range and bias tees"
+N5234B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5234B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5234B-UNY,Enhanced low phase noise performance
+N5234B-UNQ,Standard stability timebase
+N5234B-UK6,Commercial calibration certificate with test data
+N5234B-1A7,ISO 17025 compliant calibration
+N5234B-A6J,ANSI Z540 compliant calibration
+N5235B-020,IF access / configurable test set access
+N5235B-021,"Internal pulse modulators, source 1"
+N5235B-022,"Internal pulse modulators, source 2"
+N5235B-080,Frequency offset mode
+N5235B-081,Reference receiver switch
+N5235B-083,Frequency converter measurement capability
+N5235B-084,Embedded LO capability
+N5235B-086,Gain compression application support
+N5235B-088,Source phase control
+N5235B-089,Differential and I/Q measurements
+N5235B-090,Spectrum analyzer capability
+N5235B-100,Standard frequency reference
+N5235B-1E1,High stability frequency reference
+N5235B-200,"2-port, base test set configuration"
+N5235B-201,"2-port, single source, configurable test set"
+N5235B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5235B-219,"2-port, single source, extended power range and bias tees"
+N5235B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5235B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5235B-400,"4-port, base test set configuration"
+N5235B-401,"4-port, single source, configurable test set"
+N5235B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5235B-419,"4-port, single source, extended power range and bias tees"
+N5235B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5235B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5235B-UNY,Enhanced low phase noise performance
+N5235B-UNQ,Standard stability timebase
+N5235B-UK6,Commercial calibration certificate with test data
+N5235B-1A7,ISO 17025 compliant calibration
+N5235B-A6J,ANSI Z540 compliant calibration
+N5241B-020,IF access / configurable test set access
+N5241B-021,"Internal pulse modulators, source 1"
+N5241B-022,"Internal pulse modulators, source 2"
+N5241B-080,Frequency offset mode
+N5241B-081,Reference receiver switch
+N5241B-083,Frequency converter measurement capability
+N5241B-084,Embedded LO capability
+N5241B-086,Gain compression application support
+N5241B-088,Source phase control
+N5241B-089,Differential and I/Q measurements
+N5241B-090,Spectrum analyzer capability
+N5241B-100,Standard frequency reference
+N5241B-1E1,High stability frequency reference
+N5241B-200,"2-port, base test set configuration"
+N5241B-201,"2-port, single source, configurable test set"
+N5241B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5241B-219,"2-port, single source, extended power range and bias tees"
+N5241B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5241B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5241B-400,"4-port, base test set configuration"
+N5241B-401,"4-port, single source, configurable test set"
+N5241B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5241B-419,"4-port, single source, extended power range and bias tees"
+N5241B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5241B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5241B-UNY,Enhanced low phase noise performance
+N5241B-UNQ,Standard stability timebase
+N5241B-UK6,Commercial calibration certificate with test data
+N5241B-1A7,ISO 17025 compliant calibration
+N5241B-A6J,ANSI Z540 compliant calibration
+N5242B-020,IF access / configurable test set access
+N5242B-021,"Internal pulse modulators, source 1"
+N5242B-022,"Internal pulse modulators, source 2"
+N5242B-080,Frequency offset mode
+N5242B-081,Reference receiver switch
+N5242B-083,Frequency converter measurement capability
+N5242B-084,Embedded LO capability
+N5242B-086,Gain compression application support
+N5242B-088,Source phase control
+N5242B-089,Differential and I/Q measurements
+N5242B-090,Spectrum analyzer capability
+N5242B-100,Standard frequency reference
+N5242B-1E1,High stability frequency reference
+N5242B-200,"2-port, base test set configuration"
+N5242B-201,"2-port, single source, configurable test set"
+N5242B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5242B-219,"2-port, single source, extended power range and bias tees"
+N5242B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5242B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5242B-400,"4-port, base test set configuration"
+N5242B-401,"4-port, single source, configurable test set"
+N5242B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5242B-419,"4-port, single source, extended power range and bias tees"
+N5242B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5242B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5242B-UNY,Enhanced low phase noise performance
+N5242B-UNQ,Standard stability timebase
+N5242B-UK6,Commercial calibration certificate with test data
+N5242B-1A7,ISO 17025 compliant calibration
+N5242B-A6J,ANSI Z540 compliant calibration
+N5244B-020,IF access / configurable test set access
+N5244B-021,"Internal pulse modulators, source 1"
+N5244B-022,"Internal pulse modulators, source 2"
+N5244B-080,Frequency offset mode
+N5244B-081,Reference receiver switch
+N5244B-083,Frequency converter measurement capability
+N5244B-084,Embedded LO capability
+N5244B-086,Gain compression application support
+N5244B-088,Source phase control
+N5244B-089,Differential and I/Q measurements
+N5244B-090,Spectrum analyzer capability
+N5244B-100,Standard frequency reference
+N5244B-1E1,High stability frequency reference
+N5244B-200,"2-port, base test set configuration"
+N5244B-201,"2-port, single source, configurable test set"
+N5244B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5244B-219,"2-port, single source, extended power range and bias tees"
+N5244B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5244B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5244B-400,"4-port, base test set configuration"
+N5244B-401,"4-port, single source, configurable test set"
+N5244B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5244B-419,"4-port, single source, extended power range and bias tees"
+N5244B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5244B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5244B-UNY,Enhanced low phase noise performance
+N5244B-UNQ,Standard stability timebase
+N5244B-UK6,Commercial calibration certificate with test data
+N5244B-1A7,ISO 17025 compliant calibration
+N5244B-A6J,ANSI Z540 compliant calibration
+N5245B-020,IF access / configurable test set access
+N5245B-021,"Internal pulse modulators, source 1"
+N5245B-022,"Internal pulse modulators, source 2"
+N5245B-080,Frequency offset mode
+N5245B-081,Reference receiver switch
+N5245B-083,Frequency converter measurement capability
+N5245B-084,Embedded LO capability
+N5245B-086,Gain compression application support
+N5245B-088,Source phase control
+N5245B-089,Differential and I/Q measurements
+N5245B-090,Spectrum analyzer capability
+N5245B-100,Standard frequency reference
+N5245B-1E1,High stability frequency reference
+N5245B-200,"2-port, base test set configuration"
+N5245B-201,"2-port, single source, configurable test set"
+N5245B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5245B-219,"2-port, single source, extended power range and bias tees"
+N5245B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5245B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5245B-400,"4-port, base test set configuration"
+N5245B-401,"4-port, single source, configurable test set"
+N5245B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5245B-419,"4-port, single source, extended power range and bias tees"
+N5245B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5245B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5245B-UNY,Enhanced low phase noise performance
+N5245B-UNQ,Standard stability timebase
+N5245B-UK6,Commercial calibration certificate with test data
+N5245B-1A7,ISO 17025 compliant calibration
+N5245B-A6J,ANSI Z540 compliant calibration
+N5247B-020,IF access / configurable test set access
+N5247B-021,"Internal pulse modulators, source 1"
+N5247B-022,"Internal pulse modulators, source 2"
+N5247B-080,Frequency offset mode
+N5247B-081,Reference receiver switch
+N5247B-083,Frequency converter measurement capability
+N5247B-084,Embedded LO capability
+N5247B-086,Gain compression application support
+N5247B-088,Source phase control
+N5247B-089,Differential and I/Q measurements
+N5247B-090,Spectrum analyzer capability
+N5247B-100,Standard frequency reference
+N5247B-1E1,High stability frequency reference
+N5247B-200,"2-port, base test set configuration"
+N5247B-201,"2-port, single source, configurable test set"
+N5247B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5247B-219,"2-port, single source, extended power range and bias tees"
+N5247B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5247B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5247B-400,"4-port, base test set configuration"
+N5247B-401,"4-port, single source, configurable test set"
+N5247B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5247B-419,"4-port, single source, extended power range and bias tees"
+N5247B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5247B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5247B-UNY,Enhanced low phase noise performance
+N5247B-UNQ,Standard stability timebase
+N5247B-UK6,Commercial calibration certificate with test data
+N5247B-1A7,ISO 17025 compliant calibration
+N5247B-A6J,ANSI Z540 compliant calibration
+N5249B-020,IF access / configurable test set access
+N5249B-021,"Internal pulse modulators, source 1"
+N5249B-022,"Internal pulse modulators, source 2"
+N5249B-080,Frequency offset mode
+N5249B-081,Reference receiver switch
+N5249B-083,Frequency converter measurement capability
+N5249B-084,Embedded LO capability
+N5249B-086,Gain compression application support
+N5249B-088,Source phase control
+N5249B-089,Differential and I/Q measurements
+N5249B-090,Spectrum analyzer capability
+N5249B-100,Standard frequency reference
+N5249B-1E1,High stability frequency reference
+N5249B-200,"2-port, base test set configuration"
+N5249B-201,"2-port, single source, configurable test set"
+N5249B-205,"2-port, single source, configurable test set with low-frequency extension"
+N5249B-219,"2-port, single source, extended power range and bias tees"
+N5249B-222,"2-port, dual sources, extended power range, combiner, mechanical switches"
+N5249B-224,"2-port, dual sources, extended power range, combiner, mechanical switches and low-frequency extension"
+N5249B-400,"4-port, base test set configuration"
+N5249B-401,"4-port, single source, configurable test set"
+N5249B-405,"4-port, single source, configurable test set with low-frequency extension"
+N5249B-419,"4-port, single source, extended power range and bias tees"
+N5249B-423,"4-port, dual sources, extended power range, combiner, mechanical switches"
+N5249B-425,"4-port, dual sources, extended power range with low-frequency extension"
+N5249B-UNY,Enhanced low phase noise performance
+N5249B-UNQ,Standard stability timebase
+N5249B-UK6,Commercial calibration certificate with test data
+N5249B-1A7,ISO 17025 compliant calibration
+N5249B-A6J,ANSI Z540 compliant calibration
+S93001B-1FP,Time domain analysis; 1-year fixed perpetual license
+S93001B-1TP,Time domain analysis; 1-year transportable perpetual license
+S93001B-1NP,Time domain analysis; 1-year node-locked perpetual license
+S93001B-1FL,Time domain analysis; 1-year floating license
+S93001B-1UL,Time domain analysis; 1-year USB portable license
+S93002B-1FP,Scalar mixer/converter measurements; 1-year fixed perpetual license
+S93002B-1TP,Scalar mixer/converter measurements; 1-year transportable perpetual license
+S93002B-1NP,Scalar mixer/converter measurements; 1-year node-locked perpetual license
+S93002B-1FL,Scalar mixer/converter measurements; 1-year floating license
+S93002B-1UL,Scalar mixer/converter measurements; 1-year USB portable license
+S93007B-1FP,Automatic fixture removal; 1-year fixed perpetual license
+S93007B-1TP,Automatic fixture removal; 1-year transportable perpetual license
+S93007B-1NP,Automatic fixture removal; 1-year node-locked perpetual license
+S93007B-1FL,Automatic fixture removal; 1-year floating license
+S93007B-1UL,Automatic fixture removal; 1-year USB portable license
+S93008B-1FP,Pulsed RF measurements; 1-year fixed perpetual license
+S93008B-1TP,Pulsed RF measurements; 1-year transportable perpetual license
+S93008B-1NP,Pulsed RF measurements; 1-year node-locked perpetual license
+S93008B-1FL,Pulsed RF measurements; 1-year floating license
+S93008B-1UL,Pulsed RF measurements; 1-year USB portable license
+S93010B-1FP,Time domain analysis; 1-year fixed perpetual license
+S93010B-1TP,Time domain analysis; 1-year transportable perpetual license
+S93010B-1NP,Time domain analysis; 1-year node-locked perpetual license
+S93010B-1FL,Time domain analysis; 1-year floating license
+S93010B-1UL,Time domain analysis; 1-year USB portable license
+S93011B-1FP,Enhanced time domain analysis; 1-year fixed perpetual license
+S93011B-1TP,Enhanced time domain analysis; 1-year transportable perpetual license
+S93011B-1NP,Enhanced time domain analysis; 1-year node-locked perpetual license
+S93011B-1FL,Enhanced time domain analysis; 1-year floating license
+S93011B-1UL,Enhanced time domain analysis; 1-year USB portable license
+S93015B-1FP,Real-time S-parameter uncertainty; 1-year fixed perpetual license
+S93015B-1TP,Real-time S-parameter uncertainty; 1-year transportable perpetual license
+S93015B-1NP,Real-time S-parameter uncertainty; 1-year node-locked perpetual license
+S93015B-1FL,Real-time S-parameter uncertainty; 1-year floating license
+S93015B-1UL,Real-time S-parameter uncertainty; 1-year USB portable license
+S93025B-1FP,Basic pulsed-RF measurements; 1-year fixed perpetual license
+S93025B-1TP,Basic pulsed-RF measurements; 1-year transportable perpetual license
+S93025B-1NP,Basic pulsed-RF measurements; 1-year node-locked perpetual license
+S93025B-1FL,Basic pulsed-RF measurements; 1-year floating license
+S93025B-1UL,Basic pulsed-RF measurements; 1-year USB portable license
+S93026B-1FP,Advanced pulsed-RF measurements; 1-year fixed perpetual license
+S93026B-1TP,Advanced pulsed-RF measurements; 1-year transportable perpetual license
+S93026B-1NP,Advanced pulsed-RF measurements; 1-year node-locked perpetual license
+S93026B-1FL,Advanced pulsed-RF measurements; 1-year floating license
+S93026B-1UL,Advanced pulsed-RF measurements; 1-year USB portable license
+S93029B-1FP,Noise figure measurements; 1-year fixed perpetual license
+S93029B-1TP,Noise figure measurements; 1-year transportable perpetual license
+S93029B-1NP,Noise figure measurements; 1-year node-locked perpetual license
+S93029B-1FL,Noise figure measurements; 1-year floating license
+S93029B-1UL,Noise figure measurements; 1-year USB portable license
+S93080B-1FP,Frequency offset measurements; 1-year fixed perpetual license
+S93080B-1TP,Frequency offset measurements; 1-year transportable perpetual license
+S93080B-1NP,Frequency offset measurements; 1-year node-locked perpetual license
+S93080B-1FL,Frequency offset measurements; 1-year floating license
+S93080B-1UL,Frequency offset measurements; 1-year USB portable license
+S93082B-1FP,Scalar mixer/converter measurements; 1-year fixed perpetual license
+S93082B-1TP,Scalar mixer/converter measurements; 1-year transportable perpetual license
+S93082B-1NP,Scalar mixer/converter measurements; 1-year node-locked perpetual license
+S93082B-1FL,Scalar mixer/converter measurements; 1-year floating license
+S93082B-1UL,Scalar mixer/converter measurements; 1-year USB portable license
+S93083B-1FP,Vector and scalar mixer/converter measurements; 1-year fixed perpetual license
+S93083B-1TP,Vector and scalar mixer/converter measurements; 1-year transportable perpetual license
+S93083B-1NP,Vector and scalar mixer/converter measurements; 1-year node-locked perpetual license
+S93083B-1FL,Vector and scalar mixer/converter measurements; 1-year floating license
+S93083B-1UL,Vector and scalar mixer/converter measurements; 1-year USB portable license
+S93084B-1FP,Embedded LO measurements; 1-year fixed perpetual license
+S93084B-1TP,Embedded LO measurements; 1-year transportable perpetual license
+S93084B-1NP,Embedded LO measurements; 1-year node-locked perpetual license
+S93084B-1FL,Embedded LO measurements; 1-year floating license
+S93084B-1UL,Embedded LO measurements; 1-year USB portable license
+S93086B-1FP,Gain compression measurements; 1-year fixed perpetual license
+S93086B-1TP,Gain compression measurements; 1-year transportable perpetual license
+S93086B-1NP,Gain compression measurements; 1-year node-locked perpetual license
+S93086B-1FL,Gain compression measurements; 1-year floating license
+S93086B-1UL,Gain compression measurements; 1-year USB portable license
+S93087B-1FP,Intermodulation distortion measurements; 1-year fixed perpetual license
+S93087B-1TP,Intermodulation distortion measurements; 1-year transportable perpetual license
+S93087B-1NP,Intermodulation distortion measurements; 1-year node-locked perpetual license
+S93087B-1FL,Intermodulation distortion measurements; 1-year floating license
+S93087B-1UL,Intermodulation distortion measurements; 1-year USB portable license
+S93088B-1FP,Source phase control; 1-year fixed perpetual license
+S93088B-1TP,Source phase control; 1-year transportable perpetual license
+S93088B-1NP,Source phase control; 1-year node-locked perpetual license
+S93088B-1FL,Source phase control; 1-year floating license
+S93088B-1UL,Source phase control; 1-year USB portable license
+S93089B-1FP,Differential and I/Q measurements; 1-year fixed perpetual license
+S93089B-1TP,Differential and I/Q measurements; 1-year transportable perpetual license
+S93089B-1NP,Differential and I/Q measurements; 1-year node-locked perpetual license
+S93089B-1FL,Differential and I/Q measurements; 1-year floating license
+S93089B-1UL,Differential and I/Q measurements; 1-year USB portable license
+S93090B-1FP,Spectrum analysis measurements; 1-year fixed perpetual license
+S93090B-1TP,Spectrum analysis measurements; 1-year transportable perpetual license
+S93090B-1NP,Spectrum analysis measurements; 1-year node-locked perpetual license
+S93090B-1FL,Spectrum analysis measurements; 1-year floating license
+S93090B-1UL,Spectrum analysis measurements; 1-year USB portable license
+S93093B-1FP,Extended spectrum analysis / SA measurement features; 1-year fixed perpetual license
+S93093B-1TP,Extended spectrum analysis / SA measurement features; 1-year transportable perpetual license
+S93093B-1NP,Extended spectrum analysis / SA measurement features; 1-year node-locked perpetual license
+S93093B-1FL,Extended spectrum analysis / SA measurement features; 1-year floating license
+S93093B-1UL,Extended spectrum analysis / SA measurement features; 1-year USB portable license
+S93094B-1FP,Modulation distortion measurements; 1-year fixed perpetual license
+S93094B-1TP,Modulation distortion measurements; 1-year transportable perpetual license
+S93094B-1NP,Modulation distortion measurements; 1-year node-locked perpetual license
+S93094B-1FL,Modulation distortion measurements; 1-year floating license
+S93094B-1UL,Modulation distortion measurements; 1-year USB portable license
+S93095B-1FP,Noise figure converter measurements; 1-year fixed perpetual license
+S93095B-1TP,Noise figure converter measurements; 1-year transportable perpetual license
+S93095B-1NP,Noise figure converter measurements; 1-year node-locked perpetual license
+S93095B-1FL,Noise figure converter measurements; 1-year floating license
+S93095B-1UL,Noise figure converter measurements; 1-year USB portable license
+S93898B-1FP,Built-in performance test software for calibration; 1-year fixed perpetual license
+S93898B-1TP,Built-in performance test software for calibration; 1-year transportable perpetual license
+S93898B-1NP,Built-in performance test software for calibration; 1-year node-locked perpetual license
+S93898B-1FL,Built-in performance test software for calibration; 1-year floating license
+S93898B-1UL,Built-in performance test software for calibration; 1-year USB portable license

@@ -1,4 +1,4 @@
-from Communication.AnalyzerConnction import AnalyzerConn
+from Communication.AnalyzerConnction import SignalAnalyzerConn
 from Communication.Connection import *
 import time
 
@@ -20,7 +20,7 @@ IVI_SETTING_SET_SPAN = ":SENSE:FREQ:SPAN"
     # Alignment now all function
     # Alignment RF only function
 
-class SignalAnalyzer(AnalyzerConn):
+class SignalSignalAnalyzer(SignalAnalyzerConn):
 
     # The get keysight device manufacturer, model, serial number, firmware version function
     def get_idn(self):

@@ -2,6 +2,8 @@ from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButto
     QHBoxLayout, QProgressBar, QMessageBox, QTextEdit, QDialog, QGraphicsDropShadowEffect, QTableWidget, QTableWidgetItem, QHeaderView
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+
+from TestingEquipment.NetworkAnaLyzer.E50XxB import *
 from TestingEquipment.SignalAnaLyzer.N90xxB import *
 from Communication.WINconnection import *
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
@@ -185,17 +187,23 @@ class TestWorker(QThread):
             device_logger, log_file = create_test_logger(row_index)
             device_logger.info(f"Test started | Slot={row_index + 1} | IP={ip}")
             try:
-                wait_for_ping(ip, worker=self, logger=device_logger)
-                device_remote_to_administrator(ip, worker=self, logger=device_logger)
-                serialNumber, deviceModel, result = xsa_response(ip, worker=self, logger=device_logger)
-                self.device_info_update.emit(row_index, deviceModel, serialNumber)
-                send_test_started_email(recipients, deviceModel, row_index + 1, ip)
-                test_function = self.get_test_function(deviceModel)
+                ping_result = wait_for_ping(ip, worker=self, logger=device_logger)
+                if not ping_result:
+                    self.test_failed = True
+                else:
+                    deviceModelFamily = device_remote_to_administrator(ip, worker=self, logger=device_logger)
+                    if deviceModelFamily.startswith("N90"):
+                        serialNumber, deviceModel, result = xsa_response(ip, worker=self, logger=device_logger)
+                    if deviceModelFamily.startswith("E50"):
+                        serialNumber, deviceModel, result = network_response(ip, worker=self, logger=device_logger)
+                    self.device_info_update.emit(row_index, deviceModel, serialNumber)
+                    send_test_started_email(recipients, deviceModel, row_index + 1, ip)
+                    test_function = self.get_test_function(deviceModel)
 
-                if test_function is None:
-                    raise Exception(f"Unsupported unit: {deviceModel}")
+                    if test_function is None:
+                        raise Exception(f"Unsupported unit: {deviceModel}")
 
-                serialNumber, deviceModel, result = test_function(ip, worker=self, logger=device_logger)
+                    serialNumber, deviceModel, result = test_function(ip, worker=self, logger=device_logger)
 
                 if self.test_failed:
                     final_status = "FAILED"
@@ -489,6 +497,8 @@ class TestWorker(QThread):
     def get_test_function(self, device_model):
         if is_n90xxb(device_model):
             return N90XXB_System_Test
+        if is_e506x(device_model):
+            return E506x_System_Test
 
         return None
 
