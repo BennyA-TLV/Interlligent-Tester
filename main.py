@@ -165,9 +165,8 @@ class TestWorker(QThread):
                 device_logger.info(f"Serial Number detected: {serialNumber}")
                 device_logger.info(f"Unit: {deviceModel}")
                 device_logger.info(f"Test finished | Result={final_status}")
-                send_test_ended_email(recipients, serialNumber, deviceModel, row_index + 1, ip, final_status, pdf_file, is_new_device)
-
                 self.create_pdf_report(filename=pdf_file, slot=row_index + 1, ip=ip, unit=deviceModel, serial_number= serialNumber, final_status=final_status, results=result)
+                send_test_ended_email(recipients, serialNumber, deviceModel, row_index + 1, ip, final_status, pdf_file, is_new_device)
                 self.row_finished.emit(row_index, final_status, pdf_file)
 
 

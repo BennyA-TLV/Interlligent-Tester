@@ -102,8 +102,8 @@ class N90XXB(SignalSignalAnalyzer):
             commands = {
                 "SYSTem": "SYST",
             }
-            serialNumber = self.get_idn()[2]
-            os.makedirs(f"../../ScreenShot/{serialNumber}", exist_ok=True)
+            #serialNumber = self.get_idn()[2]
+            #os.makedirs(f"../../ScreenShot/{serialNumber}", exist_ok=True)
 
             for desc, cmd in commands.items():
                 try:
