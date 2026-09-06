@@ -467,7 +467,7 @@ class WINconn:
         current_user = check_user.std_out.decode().strip()
 
         if not current_user:
-            return "Error: No active user session found."
+            return False, "No active user session found."
 
         task_name = f"LicOpen_{int(time.time())}"
         remote_exe = r"C:\Program Files (x86)\Agilent\Agilent License Manager\KeysightLicenseManager.exe"
@@ -481,11 +481,25 @@ class WINconn:
         )
         encoded_payload = base64.b64encode(inner_ps.encode('utf-16-le')).decode('utf-8')
 
-        reg_cmd = (
-            f'$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded_payload}"; '
-            f'Register-ScheduledTask -TaskName "{task_name}" -Action $action -User "{current_user}" -RunLevel Highest -Force | Out-Null; '
-            f'Start-ScheduledTask -TaskName "{task_name}"'
-        )
+        reg_cmd = f"""
+        $user = "{current_user}"
+        $action = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded_payload}"
+        $principal = New-ScheduledTaskPrincipal `
+            -UserId $user `
+            -LogonType Interactive `
+            -RunLevel Highest
+        $task = New-ScheduledTask `
+            -Action $action `
+            -Principal $principal
+        Register-ScheduledTask `
+            -TaskName "{task_name}" `
+            -InputObject $task `
+            -Force | Out-Null
+        Start-ScheduledTask `
+            -TaskName "{task_name}"
+        """
 
         print(f" > Launching License Manager for {current_user}...")
         #self.session.run_ps(reg_cmd)

@@ -215,6 +215,8 @@ def N90XXB_System_Test(target_ip,worker=None, logger=None, run_win_update=True, 
             report_step("Open System Information", "PASS", 36, results_list, " ", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
             device.disconnect()
+            windows_control.disable_windows_update_notifications(worker, logger)
+            windows_control.stop_agilent_update_popup(worker, logger)
             windows_control.capture_all_systems(serial_number, results_list, worker, logger)
             report_step("Screen Shots System Information", "PASS", 40, results_list, "Done", None, worker, logger)
             if check_progress(worker): return serial_number, device_Model, results_list
@@ -291,7 +293,7 @@ def N90XXB_System_Test(target_ip,worker=None, logger=None, run_win_update=True, 
                     if download:
                         for index, version in enumerate(upgrade_path):
                             print(f"The firmware {version} file is in: {link[index]}\\{device_Model}")
-                            firmware_file = find_file_by_name(download_path, get_n90_family(device_Model), was_download, latest)
+                            firmware_file = find_file_by_name(download_path, get_n90_family(device_Model), was_download, version)
                             report_step("Download Firmware " + firmware_file, "PASS", 70, results_list, "Download Firmware " + firmware_file, None, worker, logger)
                             add_text_row(firmware_info_table, "Download Firmware " + firmware_file)
                             if check_progress(worker): return serial_number, device_Model, results_list
