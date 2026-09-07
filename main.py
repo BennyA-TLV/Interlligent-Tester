@@ -147,7 +147,7 @@ class TestWorker(QThread):
                     if test_function is None:
                         raise Exception(f"Unsupported unit: {deviceModel}")
 
-                    serialNumber, deviceModel, result = test_function(ip, worker=self, logger=device_logger, run_win_update=run_win_update, run_firmware_update=run_firmware_update)
+                    serialNumber, deviceModel, result, extra_data = test_function(ip, worker=self, logger=device_logger, run_win_update=run_win_update, run_firmware_update=run_firmware_update)
 
                 if self.test_failed:
                     final_status = "FAILED"
@@ -165,8 +165,8 @@ class TestWorker(QThread):
                 device_logger.info(f"Serial Number detected: {serialNumber}")
                 device_logger.info(f"Unit: {deviceModel}")
                 device_logger.info(f"Test finished | Result={final_status}")
-                self.create_pdf_report(filename=pdf_file, slot=row_index + 1, ip=ip, unit=deviceModel, serial_number= serialNumber, final_status=final_status, results=result)
-                send_test_ended_email(recipients, serialNumber, deviceModel, row_index + 1, ip, final_status, pdf_file, is_new_device)
+                self.create_pdf_report(filename=pdf_file, slot=row_index + 1, ip=ip, unit=deviceModel, serial_number= serialNumber, final_status=final_status, results=result, extra_data=extra_data)
+                send_test_ended_email(recipients, serialNumber, deviceModel, row_index + 1, ip, final_status, pdf_file, extra_data,  is_new_device)
                 self.row_finished.emit(row_index, final_status, pdf_file)
 
 
@@ -216,7 +216,7 @@ class TestWorker(QThread):
         return "\n".join(lines)
 
 
-    def create_pdf_report(self, filename, slot, ip, unit, serial_number, final_status, results, left_icon="Icon/icon.png", right_icon="Icon/TLV-mmW_logo.png"):
+    def create_pdf_report(self, filename, slot, ip, unit, serial_number, final_status, results, extra_data, left_icon="Icon/icon.png", right_icon="Icon/TLV-mmW_logo.png"):
 
         left_icon = resource_path(left_icon)
         right_icon = resource_path(right_icon)
@@ -238,6 +238,7 @@ class TestWorker(QThread):
         title_style.leading = 28
         story.append(Paragraph("<para align='center'><b>TEST REPORT</b></para>",title_style))
         story.append(Spacer(1, 24))
+        expiration_html = calibExpartion(extra_data)
 
         summary_data = [
             ["Slot", slot],
@@ -245,10 +246,12 @@ class TestWorker(QThread):
             ["Unit", unit],
             ["Serial Number", serial_number],
             ["Final Status", final_status],
+            ["Calibration_date", f"File Name: {extra_data[0]} - {extra_data[1]}"],
+            ["Calibration expiration date", expiration_html],
             ["Finished Time", time.strftime("%H:%M:%S")]
         ]
 
-        summary_table = Table(summary_data,colWidths=[1.7 * inch, 4.8 * inch])
+        summary_table = Table(summary_data,colWidths=[2.7 * inch, 3.8 * inch])
         status_color = colors.green if final_status == "PASSED" else colors.red
         summary_table.setStyle(TableStyle([
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
@@ -370,6 +373,12 @@ class TestWorker(QThread):
                 ]
 
                 for row_idx, row in enumerate(rows, start=1):
+                    row_text = " ".join(str(cell) for cell in row).upper()
+
+                    if "PREAMPLIFIER" in row_text:
+                        data_table_style.append(("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.green))
+                        data_table_style.append(("FONTNAME", (0, row_idx), (-1, row_idx), "Helvetica-Bold"))
+
                     for col_idx, cell in enumerate(row):
                         text = str(cell).upper()
                         if "PASS" in text:
@@ -1104,6 +1113,7 @@ class MainWindow(QWidget):
             row["is_running"] = False
             row["checkbox"].setEnabled(True)
             row["advanced_options_btn"].setEnabled(True)
+            row["progress"].setValue(0)
 
             if row["is_finished"]:
                 continue

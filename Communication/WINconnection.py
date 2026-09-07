@@ -460,7 +460,7 @@ class WINconn:
 
 
     # The open the license manger function - operat no the remote device opening the license manger
-    def open_license_manager(self, timeout=60):
+    def open_license_manager(self, timeout=90):
         if not self.session: self.connect()
 
         check_user = self.session.run_ps("(Get-CimInstance Win32_ComputerSystem).UserName")
@@ -519,7 +519,7 @@ class WINconn:
 
         #return f"Task triggered for {current_user}"
 
-    def wait_for_license_manager_window(self, timeout=60, poll_interval=2, stable_checks_required=5):
+    def wait_for_license_manager_window(self, timeout=120, poll_interval=2, stable_checks_required=5):
 
         start_time = time.time()
         stable_checks = 0
@@ -1929,6 +1929,43 @@ class WINconn:
             self.session = None
 
         return "NOT_FOUND"
+
+    def get_latest_file_date(self, folder_path, extension):
+        try:
+            if not self.session:
+                self.connect()
+
+            extension = extension.lstrip(".")
+
+            ps_command = f"""
+            $folder = '{folder_path}'
+
+            $file = Get-ChildItem -Path $folder -File -Filter '*.{extension}' |
+                    Sort-Object LastWriteTime -Descending |
+                    Select-Object -First 1
+
+            if ($file) {{
+                "$($file.Name)|$($file.LastWriteTime.ToString('dd/MM/yyyy HH:mm'))"
+            }}
+            """
+
+            result = self.session.run_ps(ps_command)
+
+            output = result.std_out.decode(
+                "utf-8",
+                errors="ignore"
+            ).strip()
+
+            if not output:
+                return [None, None]
+
+            file_name, file_date = output.split("|", 1)
+
+            return [file_name, file_date]
+
+        except Exception as e:
+            print(f"get_latest_file_date Error: {e}")
+            return [None, None]
 
 
 def device_remote_to_administrator(target_ip, worker=None, logger=None):

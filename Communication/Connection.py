@@ -2,15 +2,21 @@ import pandas as pd
 from pathlib import Path
 from email.message import EmailMessage
 import win32com.client
+from pypdf import PdfReader
 import subprocess
 import csv
 import tomllib
 import smtplib
 import time
+import re
 import os
 import sys
 import logging
+import webbrowser
+import mimetypes
+from html import escape
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 
 # Created by Benny Aberman - 054-3220104
@@ -223,7 +229,6 @@ def find_file_by_name(folder_path, model, download, contains_text=None):
 
         return "None"
 
-
 # The report procces/PDF/bar function
 def report_step(name, status, progress, results_list, value = "", image_path = None, worker=None, logger=None):
 
@@ -237,8 +242,6 @@ def report_step(name, status, progress, results_list, value = "", image_path = N
             worker.test_failed = True
         worker.table_update.emit(worker.current_row_index, name, status, value)
         worker.progress_update.emit(worker.current_row_index, progress)
-
-
 
 # The check if STOP process function
 def check_progress(worker=None):
@@ -474,89 +477,151 @@ def send_test_started_email(recipients, device_type, slot, ip, is_new_device):
         recipients
     )
 
-def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_status, pdf_file, is_new_device):
+def calibExpartion(extra_data):
+    try:
+        # Calibration date
+        calibration_date = datetime.strptime(extra_data[1],"%d/%m/%Y %H:%M")
+
+        # Expiration date = Calibration date + 1 year
+        calibration_expiration = calibration_date + relativedelta(years=1)
+
+        # Days until expiration
+        days_left = (calibration_expiration.date() - datetime.now().date()).days
+        expiration_str = calibration_expiration.strftime("%d/%m/%Y %H:%M")
+
+        # Red if expired or will expire within 60 days
+        if days_left <= 60:
+            expiration_html = (f'<span style="color:red; font-weight:bold;">'f'{expiration_str}'f'</span>')
+        else:
+            expiration_html = expiration_str
+
+        return expiration_html
+
+    except (ValueError, TypeError, IndexError):
+        expiration_html = "Unknown"
+
+def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_status, pdf_file, extra_data, is_new_device):
+
+    preview = False
 
     if not recipients:
-        return
+        print("Email recipients list is empty.")
+        return False
 
-    device_name = device_name or "Unknown"
-    device_type = device_type or "Unknown"
+    try:
+        pdf_info = extract_device_info_from_pdf(pdf_file)
+        model = pdf_info.get("device_type", "Unknown")
+        serial_number = pdf_info.get("device_name", "Unknown")
 
-    subject = f"TEST {final_status} - {device_type} - {device_name}"
+        if not model or model == "Unknown":
+            model = device_name
 
-    if final_status.upper() == "PASSED":
-        color = "#16a34a"
-    elif final_status.upper() == "FAILED":
-        color = "#dc2626"
-    else:
-        color = "#6b7280"
+        if not serial_number or serial_number == "Unknown":
+            serial_number = device_name
 
-    html_body = f"""
-    <html>
-    <body style="font-family: Arial;">
-    <div style="max-width:650px;
-                margin:auto;
-                border:1px solid #cccccc;
-                border-radius:10px;
-                padding:25px;">
-    <h2 style="color:#1f4e79;">
-        Intelligent Tester
-    </h2>
-    <h3>
-        Test Finished
-    </h3>
-    <p>
-    The automatic test has completed successfully.
-    The report is attached.
-    </p>
-    <table style="width:100%; border-collapse:collapse;">
-        <tr>
-            <td width="35%"><b>Device Name</b></td>
-            <td>{device_name}</td>
-        </tr>
-        <tr>
-            <td><b>Device Type</b></td>
-            <td>{device_type}</td>
-        </tr>
-        <tr>
-            <td><b>Slot</b></td>
-            <td>{slot}</td>
-        </tr>
-        <tr>
-            <td><b>IP Address</b></td>
-            <td>{ip}</td>
-        </tr>
-        <tr>
-            <td><b>Finished Time</b></td>
-            <td>{time.strftime("%Y-%m-%d %H:%M:%S")}</td>
-        </tr>
-    </table>
-    <br>
-    <div style="
-        background:{color};
-        color:white;
-        padding:14px;
-        border-radius:6px;
-        text-align:center;
-        font-size:22px;
-        font-weight:bold;">
-        {final_status}
-    </div>
-    <br>
-    <small style="color:gray;">
-    This message was generated automatically by Intelligent Tester.
-    </small>
-    </div>
-    </body>
-    </html>
-    """
+        is_n90_family = (isinstance(model, str) and model.upper().startswith("N90"))
 
-    send_outlook_email(
-        subject,
-        html_body,
-        recipients,
-        pdf_file
-    )
+        print(f"Model from PDF: {model}")
+        print(f"Serial from PDF: {serial_number}")
+        print(f"is_new_device: {is_new_device}")
+        print(f"is_n90_family: {is_n90_family}")
+
+        system_images = []
+        license_images = []
+
+        if is_n90_family and is_new_device:
+
+            system_images, license_images = get_n90_email_images(serial_number)
+            subject, html_body = build_new_n90_device_email(pdf_info=pdf_info, system_images=system_images, license_images=license_images, preview=preview)
+
+            # =====================================================
+            # REGULAR DEVICE
+            # =====================================================
+        else:
+            expiration_html = calibExpartion(extra_data)
+            subject = (f"TEST ENDED - " f"{device_type} - " f"{device_name} - " f"{final_status}")
+            html_body = f"""
+                   <html>
+                   <body style="
+                       font-family:
+                       Aptos,Calibri,Arial,sans-serif;
+                       font-size:11pt;
+                   ">
+                       <h2>
+                           Test Completed
+                       </h2>
+                       <p>
+                           <b>Device:</b>
+                           {device_type}
+                           <br>
+                           <b>Serial Number:</b>
+                           {device_name}
+                           <br>
+                           <b>Slot:</b>
+                           {slot}
+                           <br>
+                           <b>IP Address:</b>
+                           {ip}
+                           <br>
+                           <b>Final Status:</b>
+                           {final_status}
+                           <br>
+                           <b>Calibration_date:</b>
+                           {extra_data[0]} - {extra_data[1]}
+                           <br>
+                           <b>Calibration expiration date:</b>
+                           {expiration_html}
+                       </p>
+                       <p>
+                           The test report
+                           is attached.
+                       </p>
+                   </body>
+                   </html>
+                   """
+            # =====================================================
+            # PREVIEW MODE
+            # =====================================================
+        if preview:
+            preview_email(subject=subject, html_body=html_body, recipients=recipients, pdf_file=pdf_file)
+            return True
+
+            # =====================================================
+            # OUTLOOK
+            # =====================================================
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        mail = outlook.CreateItem(0)
+        if isinstance(recipients, (list, tuple, set)):
+            mail.To = "; ".join(recipients)
+        else:
+            mail.To = str(recipients)
+
+        mail.Subject = subject
+        mail.HTMLBody = html_body
+
+        # =====================================================
+        # NEW N90 INLINE IMAGES
+        # =====================================================
+        if is_n90_family and is_new_device:
+            add_inline_images(mail=mail, image_paths=system_images, cid_prefix="system_image")
+            add_inline_images(mail=mail, image_paths=license_images, cid_prefix="license_image")
+
+        # =====================================================
+        # PDF ATTACHMENT
+        # =====================================================
+        if pdf_file and os.path.isfile(pdf_file):
+            mail.Attachments.Add(os.path.abspath(pdf_file))
+
+        # =====================================================
+        # SEND
+        # =====================================================
+        mail.Send()
+        print(f"Email sent successfully: " f"{subject}")
+        return True
+
+    except Exception as error:
+        print(f"Failed to create/send " f"email: {error}")
+        return False
 
 def create_test_logger(row_index):
 
@@ -600,8 +665,6 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         exc_info=(exc_type, exc_value, exc_traceback)
     )
 
-sys.excepthook = handle_exception
-
 def resource_path(relative_path):
 
     try:
@@ -615,7 +678,6 @@ def app_base_dir():
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.getcwd()
-
 
 def debug_print(message):
     debug_file = os.path.join(app_base_dir(), "debug_startup.log")
@@ -751,10 +813,658 @@ def wait_for_ping(ip, worker=None, logger=None, timeout=300, interval=5):
 
     return False
 
+def extract_device_info_from_pdf(pdf_file):
+
+    info = {
+        "device_type": "Unknown",
+        "device_name": "Unknown",
+        "firmware_version": "Unknown",
+        "calibration_date": "Unknown",
+        "calibration expiration date": "Unknown",
+        "device_options": "Unknown",
+        "windows_version": "Unknown",
+        "self_test_status": "Unknown"
+    }
+
+    if not pdf_file or not os.path.isfile(pdf_file):
+        logging.error(f"PDF file was not found: {pdf_file}")
+        return info
+
+    try:
+        reader = PdfReader(pdf_file)
+
+        text_parts = []
+
+        for page in reader.pages:
+            page_text = page.extract_text() or ""
+            text_parts.append(page_text)
+
+        text = "\n".join(text_parts)
+        flat_text = re.sub(r"\s+", " ", text)
+
+        # =====================================================
+        # DEVICE TYPE
+        # =====================================================
+        device_patterns = [
+            r"\bUnit\s+([A-Z]\d{4}[A-Z])\b",
+            r"Product\s+Number\s*:\s*([A-Z]\d{4}[A-Z])\b",
+            r"\bModel\s*:\s*([A-Z]\d{4}[A-Z])\b"
+        ]
+
+        for pattern in device_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+
+            if match:
+                info["device_type"] = match.group(1).upper()
+                break
+
+        # =====================================================
+        # SERIAL NUMBER
+        # =====================================================
+        serial_patterns = [
+            r"Serial\s+Number\s*:\s*([A-Z0-9-]+)",
+            r"\bS/N\s*:\s*([A-Z0-9-]+)"
+        ]
+
+        for pattern in serial_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+
+            if match:
+                info["device_name"] = match.group(1).strip()
+                break
+
+        # =====================================================
+        # FIRMWARE VERSION
+        # =====================================================
+        firmware_patterns = [
+            r"\bFirmware\s*:\s*([A-Z]\.\d+(?:\.\d+)*)",
+
+            r"Instrument\s+S\s*/\s*W\s+Revision\s*[:\-]?\s*"
+            r"([A-Z]\s*\.\s*\d+(?:\s*\.\s*\d+)*)",
+
+            r"Firmware\s+(?:Revision|Version)\s*[:\-]?\s*"
+            r"([A-Z]?\s*\.?\s*\d+(?:\s*\.\s*\d+)*)",
+        ]
+
+        for pattern in firmware_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+
+            if match:
+                firmware = re.sub(r"\s+", "", match.group(1))
+                info["firmware_version"] = firmware.upper()
+                break
+
+        # =====================================================
+        # WINDOWS VERSION
+        # =====================================================
+        windows_match = re.search(
+            r"\bWindows\s+(10|11)\b",
+            flat_text,
+            re.IGNORECASE
+        )
+
+        if windows_match:
+            info["windows_version"] = (
+                f"Windows {windows_match.group(1)}"
+            )
+
+        # =====================================================
+        # CALIBRATION DATE
+        # =====================================================
+        calibration_patterns = [
+            r"Calibration\s+Date\s*:\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
+            r"Cal\s+Date\s*:\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
+            r"Calibration[_\s]+date.*?File\s*Name\s*:\s*.*?-\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})"
+        ]
+
+        for pattern in calibration_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+
+            if match:
+                info["calibration_date"] = match.group(1)
+                break
+
+        # =====================================================
+        # CALIBRATION EXPIRATION DATE
+        # =====================================================
+        calibration_expiration_patterns = [
+            r"Calibration\s+expiration\s+Date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s+\d{1,2}:\d{2})?)",
+            r"Cal\s+Exp\s+Date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s+\d{1,2}:\d{2})?)",
+            r"Calibration[_\s]+expiration[_\s]+date.*?File\s*Name\s*:\s*.*?-\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s+\d{1,2}:\d{2})?)",
+        ]
+
+        for pattern in calibration_expiration_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+
+            if match:
+                info["calibration expiration date"] = match.group(1)
+                break
+
+        # =====================================================
+        # DEVICE OPTIONS
+        # =====================================================
+        info["device_options"] = extract_device_options(text=text, device_model=info.get("device_type"))
+
+        # =====================================================
+        # SELF-TEST
+        # =====================================================
+        if re.search(r"\bUnit\s+self[-\s]?test\s+passed\b", flat_text, flags=re.IGNORECASE):
+            info["self_test_status"] = "PASSED"
+
+        elif re.search(r"\bUnit\s+self[-\s]?test\s+failed\b", flat_text, flags=re.IGNORECASE):
+            info["self_test_status"] = "FAILED"
+
+        return info
+
+    except Exception as error:
+        logging.exception(f"Failed to extract device information from PDF: {error}")
+
+    return info
+
+# Create an HTML preview of the email and open it in the default browser.
+def preview_email(subject, html_body, recipients=None, pdf_file=None):
+    try:
+        if pdf_file:
+            folder = os.path.dirname( os.path.abspath(pdf_file))
+        else:
+            folder = os.getcwd()
+
+        preview_file = os.path.join(folder, "Email_Preview.html")
+
+        if isinstance(recipients, (list, tuple, set)):
+            recipients_text = "; ".join(recipients)
+        elif recipients:
+            recipients_text = str(recipients)
+        else:
+            recipients_text = "(No recipients)"
+
+        attachment_text = ""
+
+        if pdf_file:
+            attachment_text = f"""
+            <hr>
+            <p>
+                <b>Attachment:</b>
+                {escape(os.path.basename(pdf_file))}
+            </p>
+            """
+
+        full_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>{escape(subject)}</title>
+        </head>
+
+        <body style="
+            background:#f4f4f4;
+            margin:20px;
+            font-family:Aptos,Calibri,Arial,sans-serif;
+        ">
+
+            <div style="
+                background:white;
+                border:1px solid #cccccc;
+                border-radius:8px;
+                padding:25px;
+                max-width:900px;
+                margin:auto;
+            ">
+                <p>
+                    <b>To:</b>
+                    {escape(recipients_text)}
+                </p>
+                <hr>
+                <p>
+                    <b>Subject:</b>
+                    {escape(subject)}
+                </p>
+                <hr>
+                {html_body}
+                {attachment_text}
+            </div>
+        </body>
+        </html>
+        """
+
+        with open(preview_file, "w", encoding="utf-8") as file:
+            file.write(full_html)
+        webbrowser.open("file:///" + preview_file.replace("\\", "/"))
+        print(f"Email preview created: {preview_file}")
+        return True
+
+    except Exception as error:
+        print(f"Failed to create email preview: {error}")
+        return False
+
+def build_new_n90_device_email(pdf_info, system_images=None, license_images=None, preview=False):
+
+    system_images = system_images or []
+    license_images = license_images or []
+
+    model = pdf_info.get("device_type", "Unknown")
+    serial_number = pdf_info.get("device_name", "Unknown")
+    firmware_version = pdf_info.get("firmware_version", "Unknown")
+    calibration_date = pdf_info.get("calibration_date", "Unknown")
+    calibration_expiration_date = pdf_info.get("calibration expiration date", "Unknown")
+    device_options = pdf_info.get("device_options", "Unknown")
+    windows_version = pdf_info.get("windows_version", "Unknown")
+    self_test_status = pdf_info.get("self_test_status", "Unknown")
+
+    if not calibration_date or calibration_date == "Unknown":
+        calibration_date = "Not available in report"
+
+    if not calibration_expiration_date or calibration_expiration_date == "Unknown":
+        calibration_expiration_date = "Not available in report"
+
+    subject = (f"[INBOUND] {model},{serial_number} " f"add to main from Keysight")
+
+    # =====================================================
+    # SYSTEM IMAGES
+    # =====================================================
+    system_html = ""
+
+    if system_images:
+        system_html += """
+        <hr>
+        <h3>System Information</h3>
+        """
+        for index, image_path in enumerate(system_images, start=1):
+            image_path = Path(image_path)
+
+            if preview:
+                image_src = image_path.resolve().as_uri()
+            else:
+                image_src = f"cid:system_image_{index}"
+
+            system_html += f"""
+            <p>
+                <b>System Information #{index}</b>
+            </p>
+            <p>
+                <img
+                    src="{image_src}"
+                    style="
+                        max-width:900px;
+                        width:100%;
+                        height:auto;
+                        border:1px solid #cccccc;
+                    "
+                >
+            </p>
+            """
+    # =====================================================
+    # LICENSE IMAGES
+    # =====================================================
+    license_html = ""
+
+    if license_images:
+        license_html += """
+        <br>
+        <hr>
+        <h3>License Information</h3>
+        """
+
+        for index, image_path in enumerate(license_images, start=1):
+            image_path = Path(image_path)
+
+            if preview:
+                image_src = image_path.resolve().as_uri()
+            else:
+                image_src = f"cid:license_image_{index}"
+
+            license_html += f"""
+            <p>
+                <b>License Information #{index}</b>
+            </p>
+            <p>
+                <img
+                    src="{image_src}"
+                    style="
+                        max-width:900px;
+                        width:100%;
+                        height:auto;
+                        border:1px solid #cccccc;
+                    "
+                >
+            </p>
+            """
+    # =====================================================
+    # HTML BODY
+    # =====================================================
+    html_body = f"""
+    <html>
+    <body style="
+        font-family:Aptos,Calibri,Arial,sans-serif;
+        font-size:11pt;
+        direction:ltr;
+        color:#000000;
+    ">
+        <p>
+            <b>Info for Priority:</b>
+        </p>
+        <ol>
+            <li style="margin-bottom:15px;">
+                <b>Model:</b>
+                {model}
+            </li>
+            <li style="margin-bottom:15px;">
+                <b>S/N:</b>
+                {serial_number}
+            </li>
+            <li style="margin-bottom:15px;">
+                <b>FW version:</b>
+                {firmware_version}
+            </li>
+            <li style="margin-bottom:15px;">
+                <b>Cal date:</b>
+                {calibration_date}
+            </li>
+             <li style="margin-bottom:15px;">
+                <b>Cal expiration date:</b>
+                {calibration_expiration_date}
+            </li>
+            <li style="margin-bottom:15px;">
+                <b>Options:</b>
+                {device_options}
+            </li>
+            <li style="margin-bottom:15px;">
+                <b>{windows_version}</b>
+            </li>
+            <li style="margin-bottom:15px;">
+                <b>Unit self-test:</b>
+                {self_test_status}
+            </li>
+        </ol>
+        {system_html}
+        {license_html}
+    </body>
+    </html>
+    """
+
+    return subject, html_body
+
+# Extract N90 options from the System Information option tables.
+def extract_n90_system_information_options(text, device_model):
+
+    normalized_text = normalize_pdf_text(text)
+
+    if not normalized_text:
+        return []
+
+    section_match = re.search(r"System\s+Information\s+" r"Option\s+ID\s+" r"Name\s*/?\s*Description\s+" r"Option\s+Version" r"(.*?)" r"Keysight\s+License\s+Manager", normalized_text, flags=re.IGNORECASE | re.DOTALL)
+
+    if not section_match:
+        return []
+
+    system_section = section_match.group(1)
+    model = str(device_model or "").strip().upper()
+    patterns = []
+
+    if model:
+        patterns.append(rf"\b{re.escape(model)}-[A-Z0-9]+\b")
+
+    patterns.extend([r"\bN\d{4}[A-Z]{0,2}\d*[A-Z]*(?:-[A-Z0-9]+)?\b", r"\bN90[A-Z0-9_]+(?:-[A-Z0-9]+)?\b", r"\bU\d+[A-Z0-9_]+(?:-[A-Z0-9]+)?\b"])
+    combined_pattern = "|".join(f"(?:{pattern})" for pattern in patterns)
+    raw_options = re.findall(combined_pattern, system_section, flags=re.IGNORECASE)
+    cleaned_options = []
+
+    for raw_option in raw_options:
+        option_id = clean_n90_option_id(raw_option, device_model)
+
+        if option_id and option_id not in cleaned_options:
+            cleaned_options.append(option_id)
+
+    return cleaned_options
+
+# Extract license/option IDs from the Keysight License Manager table
+def extract_n90_license_manager_options(text, device_model=None):
+
+    normalized_text = normalize_pdf_text(text)
+    if not normalized_text:
+        return []
+
+    section_match = re.search(r"Keysight\s+License\s+Manager" r"(.*?)" r"firmware\s+Information", normalized_text, flags=re.IGNORECASE | re.DOTALL)
+
+    if not section_match:
+        return []
+
+    license_section = section_match.group(1)
+    model = str(device_model or "").strip().upper()
+    cleaned_options = []
+
+    for raw_line in license_section.splitlines():
+        line = raw_line.strip()
+
+        if not line:
+            continue
+
+        model_specific_match = None
+        if model:
+            model_specific_match = re.fullmatch(rf"{re.escape(model)}-[A-Z0-9]+", line, flags=re.IGNORECASE)
+        general_match = re.fullmatch(r"(?:" r"N\d{4}[A-Z]{0,2}\d*[A-Z]*(?:-[A-Z0-9]+)?" r"|N90[A-Z0-9_]+(?:-[A-Z0-9]+)?" r"|U\d+[A-Z0-9_]+(?:-[A-Z0-9]+)?" r")", line, flags=re.IGNORECASE)
+
+        if not model_specific_match and not general_match:
+            continue
+
+        option_id = clean_n90_option_id(line, device_model)
+
+        if option_id and option_id not in cleaned_options:
+            cleaned_options.append(option_id)
+
+    return cleaned_options
+
+# Existing option extraction for E506x devices.
+def extract_e506x_options(text):
+
+    flat_text = re.sub(r"\s+", " ", text)
+    options_section_match = re.search(r"Option\s+ID.*?Option\s+Version" r"(.*?)" r"firmware\s+Information", flat_text, re.IGNORECASE | re.DOTALL)
+
+    if not options_section_match:
+        return "Unknown"
+
+    options_section = options_section_match.group(1)
+    option_codes = re.findall(r"(?:^|\s)" r"([A-Z0-9]{3})" r"(?=\s+(?:LF-RF|High|Standard|GPIB|Handler|Impedance))", options_section, re.IGNORECASE)
+    excluded_options = {"FOR", "AND", "THE", "NOT", "VNA", "GPI", "GPIB", "PORT", "TEST", "SET", "GAIN", "HIGH", "LOW", "BIAS"}
+    option_codes = [code.upper() for code in option_codes if code.upper() not in excluded_options ]
+
+    option_codes = list(dict.fromkeys(option_codes))
+
+    if not option_codes:
+        return "Unknown"
+
+    return "; ".join(option_codes)
+
+# Extract N90 options from both: System Information & License Manager
+def extract_n90_options_from_pdf_text(text, device_model):
+
+    system_options = extract_n90_system_information_options( text=text, device_model=device_model)
+
+    license_options = extract_n90_license_manager_options(text=text, device_model=device_model)
+
+    all_options = merge_unique_options(system_options, license_options)
+
+    if not all_options:
+        return "Unknown"
+
+    return "; ".join(all_options)
+
+# Merge option lists while preserving order and removing duplicates.
+def merge_unique_options(*option_lists):
+
+    merged_options = []
+    for option_list in option_lists:
+
+        if not option_list:
+            continue
+
+        for option in option_list:
+            if option and option not in merged_options:
+                merged_options.append(option)
+
+    return merged_options
+
+# Clean one N90 option ID.
+def clean_n90_option_id(option_id, device_model):
+
+    if not option_id:
+        return None
+
+    option_id = re.sub(r"\s+","",str(option_id)).upper()
+
+    excluded_words = {"NONE", "FIXED", "UNLIMITED", "LOCAL", "FEATURE", "DESCRIPTION", "VERSION", "LICENSE", "NUMBER", "EXPIRATION", "TYPE", "COUNT", "LOCATION", "OPTION", "ID", "NAME"}
+
+    if option_id in excluded_words:
+        return None
+
+    model = str(device_model or "").strip().upper()
+
+    if model:
+        model_prefix = model + "-"
+        if option_id.startswith(model_prefix):
+            option_id = option_id[len(model_prefix):]
+
+    if not option_id:
+        return None
+
+    return option_id
+
+# Normalize text extracted from a PDF.
+def normalize_pdf_text(text):
+
+    if not text:
+        return ""
+
+    text = (text.replace("\r\n", "\n").replace("\r", "\n").replace("\u200b", "").replace("\ufeff", "").replace("￾", "-"))
+    text = re.sub(r"([A-Z0-9_]+-)\s*\n\s*([A-Z0-9]+)",r"\1\2", text, flags=re.IGNORECASE)
+    return text
+
+#  Extract device options according to the device family.
+def extract_device_options(text, device_model):
+
+    model = str(device_model or "").strip().upper()
+    if model.startswith("N90"):
+        return extract_n90_options_from_pdf_text(text=text, device_model=model)
+
+    if re.fullmatch(r"E506\d[A-Z]?", model):
+        return extract_e506x_options(text)
+
+    return "Unknown"
+
+"""def format_email_value(value, fallback="Not available in report"):
+    if value is None:
+        return fallback
+
+    value = str(value).strip()
+
+    if not value or value.lower() == "unknown":
+        return fallback
+
+    return value"""
+
+def get_n90_email_images(serial_number):
+
+    screenshot_path = load_configFile("screenShot_path")
+    screenshot_root = Path(screenshot_path)
+    valid_extensions = {".png", ".jpg", ".jpeg"}
+
+    system_images = load_images(screenshot_root, serial_number, "System", valid_extensions)
+    license_images = load_images(screenshot_root, serial_number,"License", valid_extensions)
+
+    print("System images:")
+    for image in system_images:
+        print("   ", image)
+
+    print("License images:")
+    for image in license_images:
+        print("   ", image)
+
+    return system_images, license_images
+
+def load_images(screenshot_root, serial_number, folder_name, valid_extensions):
+
+    folder = (screenshot_root / serial_number / folder_name)
+
+    if not folder.exists():
+        print(f"Folder not found: {folder}")
+        return []
+
+    return sorted(
+        [
+            file
+            for file in folder.iterdir()
+            if file.is_file()
+            and file.suffix.lower() in valid_extensions
+        ]
+    )
+
+def get_n90_email_images(serial_number):
+
+    screenshot_path = load_configFile("screenShot_path")
+    base_path = Path(screenshot_path)
+    device_folder = base_path / serial_number
+    license_folder = device_folder / "License"
+    system_folder = device_folder / "System"
+    valid_extensions = {".png", ".jpg", ".jpeg"}
+    license_images = []
+    system_images = []
+    if license_folder.exists():
+        license_images = sorted(
+            [
+                str(file)
+                for file in license_folder.iterdir()
+                if file.is_file()
+                and file.suffix.lower() in valid_extensions
+            ]
+        )
+    if system_folder.exists():
+        system_images = sorted(
+            [
+                str(file)
+                for file in system_folder.iterdir()
+                if file.is_file()
+                and file.suffix.lower() in valid_extensions
+            ]
+        )
+
+    print("System images:")
+    for image in system_images:
+        print("   ", image)
+
+    print("License images:")
+    for image in license_images:
+        print("   ", image)
+
+    return system_images, license_images
+
+
+def add_inline_images(mail, image_paths, cid_prefix):
+
+    for index, image_path in enumerate(image_paths, start=1):
+        image_path = Path(image_path)
+
+        if not image_path.is_file():
+
+            print(f"Image not found: " f"{image_path}")
+            continue
+
+        attachment = (mail.Attachments.Add(str(image_path.resolve())))
+        cid = (f"{cid_prefix}_{index}")
+
+        # Content-ID
+        attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid)
+        mime_type, _ = (mimetypes.guess_type( str(image_path)))
+
+        if not mime_type:
+            mime_type = "image/png"
+
+        attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x370E001F", mime_type)
+
+
 def main():
 
     recipients = [
-        "automation@int-rf.com",
          "Benny.a@tlv-mm.com"
     ]
 
@@ -762,29 +1472,46 @@ def main():
     device_type = "Signal Analyzer"
     slot = "SLOT1"
     ip = "192.168.1.100"
+    final_status = "PASS"
+    pdf_file = r"C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results\MY57103319\MY57103319.pdf"
 
-    print("Sending START email...")
-    send_test_started_email(
-        recipients,
-        device_type,
-        slot,
-        ip
-    )
+    pdf_info = extract_device_info_from_pdf(pdf_file)
 
-    input("Press ENTER to send END email...")
+    for key, value in pdf_info.items():
+        print(f"{key}: {value}")
 
-    pdf_file = r"C:\Temp\TestReport.pdf"
+    reader = PdfReader(pdf_file)
 
-    print("Sending END email...")
+    pdf_text = ""
+
+    for page in reader.pages:
+        page_text = page.extract_text() or ""
+        pdf_text += page_text + "\n"
+
+    debug_file = os.path.splitext(pdf_file)[0] + "_PDF_TEXT.txt"
+
+    with open(debug_file, "w", encoding="utf-8") as file:
+        file.write(pdf_text)
+
+    print(f"PDF text saved to: {debug_file}")
+
+    """print("Sending START email...")
     send_test_ended_email(
         recipients,
         device_name,
         device_type,
         slot,
         ip,
-        "PASSED",
-        pdf_file
-    )
+        final_status,
+        pdf_file,
+        is_new_device=True
+    )"""
+
+    input("Press ENTER to send END email...")
+
+    print("Sending END email...")
+    extra_data = [" CurrentPhysics_5012.bkz", "25/01/2026 11:54"]
+    send_test_ended_email(recipients, device_name, device_type, slot, ip, "PASSED", pdf_file, extra_data, True)
 
     print("Done.")
 
