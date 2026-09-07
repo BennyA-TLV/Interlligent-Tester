@@ -375,7 +375,7 @@ class TestWorker(QThread):
                 for row_idx, row in enumerate(rows, start=1):
                     row_text = " ".join(str(cell) for cell in row).upper()
 
-                    if "PREAMPLIFIER" in row_text:
+                    if any(x in row_text for x in ("PREAMPLIFIER", "PRE-AMPLIFIER")):
                         data_table_style.append(("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.green))
                         data_table_style.append(("FONTNAME", (0, row_idx), (-1, row_idx), "Helvetica-Bold"))
 
