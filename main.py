@@ -338,10 +338,18 @@ class TestWorker(QThread):
                     data_cell_style = ParagraphStyle(name="DataCellStyle", fontSize=7, leading=8, wordWrap="CJK")
                 else:
                     data_cell_style = ParagraphStyle(name="DataCellStyle", fontSize=8, leading=9, wordWrap="CJK")
+
+                preamp_cell_style = ParagraphStyle(name="PreAmpCellStyle", parent=data_cell_style, fontName="Helvetica-Bold",  fontSize=8.5, leading=9.5, textColor=colors.HexColor("#008000"))
                 table_data: list[list[Any]] = [[Paragraph(str(h), data_cell_style) for h in headers]]
 
                 for row in rows:
-                    table_data.append([Paragraph(str(cell), data_cell_style)for cell in row])
+                    row_text = " ".join(str(cell) for cell in row).upper()
+                    if "PRE-AMPLIFIER" in row_text or "PREAMPLIFIER" in row_text:
+                        current_style = preamp_cell_style
+                    else:
+                        current_style = data_cell_style
+
+                    table_data.append([Paragraph(str(cell), current_style)for cell in row])
 
                 page_width = A4[0] - doc.leftMargin - doc.rightMargin
                 num_cols = len(headers)
@@ -376,7 +384,7 @@ class TestWorker(QThread):
                     row_text = " ".join(str(cell) for cell in row).upper()
 
                     if any(x in row_text for x in ("PREAMPLIFIER", "PRE-AMPLIFIER")):
-                        data_table_style.append(("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.green))
+                        data_table_style.append(("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.HexColor("#006400")))
                         data_table_style.append(("FONTNAME", (0, row_idx), (-1, row_idx), "Helvetica-Bold"))
 
                     for col_idx, cell in enumerate(row):

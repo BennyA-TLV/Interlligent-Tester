@@ -992,3 +992,35 @@ S93898B-1TP,Built-in performance test software for calibration; 1-year transport
 S93898B-1NP,Built-in performance test software for calibration; 1-year node-locked perpetual license
 S93898B-1FL,Built-in performance test software for calibration; 1-year floating license
 S93898B-1UL,Built-in performance test software for calibration; 1-year USB portable license
+N9042B-MTU,Multi-touch user interface
+N9042B-PCA,"Intel(R) Core(TM) i7-9850HE CPU @ 2.70GHz, 32 GB"
+N9042B-SSD,MICRON_3400_MTFDKBA512TFH
+N9042B-W11,"Microsoft Windows 11 IoT Enterprise LTSC 26100, 64 bit OS"
+N9042B_550,"Frequency Range, 50 GHz"
+N9042B_B25,"Analysis bandwidth, 25 MHz"
+N9042B_B2X,"Analysis bandwidth, 255 MHz"
+N9042B_B40,"Analysis bandwidth, 40 MHz"
+N9042B_CR3,"Connector Rear, 2nd IF output"
+N9042B_DP2,"Digital Processor, 2 GB Capture Memory"
+N9042B_EP0,Enhanced Performance DDS LO
+N9042B_ESC,"External source control, CW"
+N9042B_EXM,External Mixing
+N9042B_FBP,Full Bypass Path (Cal Data)
+N9042B_FS1,Fast sweep capability
+N9042B_FS2,Enhanced fast sweep speed
+N9042B_FSA,2dB Step Attenuator
+N9042B_LFE,"Low Frequency Enabled, 2 Hz"
+N9042B_LNP,Low Noise Path
+N9042B_MPB,Microwave Preselector Bypass
+N9042B_NF2,"Noise Floor Extension (NFE), instrument alignment"
+N9042B_NUL,IM Nulling
+N9042B_PFR,N9042B_PFR
+N9042B_R10,"Analysis bandwidth, 1 GHz"
+N9042B_R15,"Analysis bandwidth, 1.5 GHz"
+N9042B_R20,"Analysis bandwidth, 2 GHz"
+N9042B_R40,"Analysis bandwidth, 4 GHz"
+N9042B_RTL,Real Time Linking
+N9042B_ST2,2 GHz IQ Streaming
+N9042B_WF1,Wideband Digital IF
+N9060ES1E,Core Software Including IQ and Spectrum Analyzer Apps
+U9361Y_RCL,Receiver Calibrator (RCal) Control
