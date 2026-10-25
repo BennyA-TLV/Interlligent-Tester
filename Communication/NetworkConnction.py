@@ -220,6 +220,51 @@ class NetworkAnalyzerConn:
                 self.logger.exception("Failed reading system information")
             return results_list
 
+    def e508x_license_full_query(self, licenses):
+        results_list = []
+
+        try:
+            print("\n===== LICENSE FULL QUERY =====")
+            print("Received licenses:", licenses)
+
+            headers = [
+                "Option ID",
+                "Name/Description"
+            ]
+
+            license_table = create_data_table(
+                title="Keysight License Manager",
+                headers=[
+                    f"{headers[0]:^22}",
+                    f"{headers[1]:^80}"
+                ]
+            )
+
+            for feature, description in licenses:
+                license_table["rows"].append([
+                    feature,
+                    description
+                ])
+
+            print("Table type:", license_table.get("type"))
+            print("Table title:", license_table.get("title"))
+            print("Table rows:", len(license_table["rows"]))
+
+            results_list.append(license_table)
+
+            return results_list
+
+        except Exception as error:
+            print(
+                f"License information error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+            if self.logger:
+                self.logger.exception("Failed reading license information")
+
+            return results_list
+
     def read_e50_system_information(self, system_info_table, measurements_table):
         print("\n")
         print("*" * 20 + " System Information " + "*" * 20)
