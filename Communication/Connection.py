@@ -4,6 +4,7 @@ from email.message import EmailMessage
 import win32com.client
 from pypdf import PdfReader
 import subprocess
+import html
 import csv
 import tomllib
 import smtplib
@@ -502,7 +503,7 @@ def calibExpartion(extra_data):
 
 def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_status, pdf_file, extra_data, is_new_device):
 
-    preview = False
+    preview = True
 
     if not recipients:
         print("Email recipients list is empty.")
@@ -531,12 +532,12 @@ def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_
         license_images = []
 
         if is_n90_family and is_new_device:
-
             system_images, license_images = get_n90_email_images(serial_number)
             subject, html_body = build_new_n90_device_email(pdf_info=pdf_info, system_images=system_images, license_images=license_images, preview=preview)
 
-        if is_e50_family and is_new_device:
-            fireware_images, system_images, system_info_images = get_e50_email_images(serial_number)
+        elif is_e50_family and is_new_device:
+            firmware_images, system_images, license_images, system_info_images = get_e50_email_images(serial_number)
+            subject, html_body = build_new_e50_device_email(pdf_info=pdf_info, firmware_images=firmware_images, system_images=system_images, system_info_images=system_info_images, license_images=license_images, preview=preview)
 
             # =====================================================
             # REGULAR DEVICE
@@ -807,6 +808,253 @@ def wait_for_ping(ip, worker=None, logger=None, timeout=300, interval=5):
     return False
 
 def extract_device_info_from_pdf(pdf_file):
+
+    info = {
+        "device_type": "Unknown",
+        "device_name": "Unknown",
+        "firmware_version": "Unknown",
+        "calibration_date": "Unknown",
+        "calibration expiration date": "Unknown",
+        "device_options": "Unknown",
+        "option_descriptions": [],
+        "windows_version": "Unknown",
+        "self_test_status": "Unknown"
+    }
+
+    if not pdf_file or not os.path.isfile(pdf_file):
+        logging.error(f"PDF file was not found: {pdf_file}")
+        return info
+
+    try:
+        reader = PdfReader(pdf_file)
+        text_parts = []
+        for page in reader.pages:
+            page_text = page.extract_text() or ""
+            text_parts.append(page_text)
+
+        text = "\n".join(text_parts)
+        flat_text = re.sub(r"\s+"," ", text)
+
+        device_patterns = [
+            r"\bUnit\s+([A-Z]\d{4}[A-Z])\b",
+            r"Product\s+Number\s*:\s*"
+            r"([A-Z]\d{4}[A-Z])\b",
+            r"\bModel\s*:\s*"
+            r"([A-Z]\d{4}[A-Z])\b"
+        ]
+
+        for pattern in device_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+            if match:
+                info["device_type"] = (match.group(1).upper())
+                break
+
+        serial_patterns = [
+            r"Serial\s+Number\s*:\s*"
+            r"([A-Z0-9-]+)",
+            r"\bS/N\s*:\s*"
+            r"([A-Z0-9-]+)"
+        ]
+
+        for pattern in serial_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+            if match:
+                info["device_name"] = (match.group(1).strip())
+                break
+
+        firmware_patterns = [
+            r"\bFirmware\s*:\s*"
+            r"([A-Z]\.\d+(?:\.\d+)*)",
+            r"Instrument\s+S\s*/\s*W\s+Revision"
+            r"\s*[:\-]?\s*"
+            r"([A-Z]\s*\.\s*\d+"
+            r"(?:\s*\.\s*\d+)*)",
+            r"Firmware\s+"
+            r"(?:Revision|Version)"
+            r"\s*[:\-]?\s*"
+            r"([A-Z]?\s*\.?\s*\d+"
+            r"(?:\s*\.\s*\d+)*)",
+        ]
+
+        for pattern in firmware_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+            if match:
+                firmware = re.sub(r"\s+","", match.group(1))
+                info["firmware_version"] = (firmware.upper())
+                break
+
+        windows_match = re.search(r"\bWindows\s+(10|11)\b", flat_text, re.IGNORECASE)
+        if windows_match:
+            info["windows_version"] = (f"Windows " f"{windows_match.group(1)}")
+        else:
+            embedded_match = re.search(
+                r"(Windows\s+Embedded\s+Standard"
+                r"(?:\s*\(Ver\s+[^)]+\))?)",
+                flat_text,
+                re.IGNORECASE
+            )
+
+            if embedded_match:
+                windows_version = (embedded_match.group(1).strip())
+                windows_version = re.sub(r"\s+"," ", windows_version)
+                info["windows_version"] = (windows_version)
+
+        calibration_patterns = [
+            r"Calibration\s+Date\s*:\s*"
+            r"(\d{1,2}[/-]"
+            r"\d{1,2}[/-]"
+            r"\d{2,4})",
+            r"Cal\s+Date\s*:\s*"
+            r"(\d{1,2}[/-]"
+            r"\d{1,2}[/-]"
+            r"\d{2,4})",
+            r"Calibration[_\s]+date.*?"
+            r"File\s*Name\s*:\s*.*?-\s*"
+            r"(\d{1,2}[/-]"
+            r"\d{1,2}[/-]"
+            r"\d{2,4})"
+        ]
+
+        for pattern in calibration_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+            if match:
+                info["calibration_date"] = (match.group(1))
+                break
+
+        calibration_expiration_patterns = [
+            r"Calibration\s+expiration\s+Date"
+            r"\s*:?\s*"
+            r"(\d{1,2}[/-]"
+            r"\d{1,2}[/-]"
+            r"\d{2,4}"
+            r"(?:\s+\d{1,2}:\d{2})?)",
+            r"Cal\s+Exp\s+Date"
+            r"\s*:?\s*"
+            r"(\d{1,2}[/-]"
+            r"\d{1,2}[/-]"
+            r"\d{2,4}"
+            r"(?:\s+\d{1,2}:\d{2})?)",
+            r"Calibration[_\s]+"
+            r"expiration[_\s]+date.*?"
+            r"File\s*Name\s*:\s*.*?-\s*"
+            r"(\d{1,2}[/-]"
+            r"\d{1,2}[/-]"
+            r"\d{2,4}"
+            r"(?:\s+\d{1,2}:\d{2})?)",
+        ]
+
+        for pattern in calibration_expiration_patterns:
+            match = re.search(pattern, flat_text, re.IGNORECASE)
+            if match:
+                info["calibration expiration date"] = match.group(1)
+                break
+
+        model = str(info.get("device_type", "")).upper()
+        if re.match(r"^E50\d{2}[A-Z]$", model):
+            option_descriptions = []
+            table_match = re.search(
+                r"Option\s+ID\s+Name/Description\s+Option\s+Version"
+                r"(.*?)"
+                r"(?=Keysight\s+License\s+Manager|Image\s+\d+\s*:|$)",
+                text,
+                re.IGNORECASE | re.DOTALL
+            )
+
+            if table_match:
+                lines = [
+                    line.strip()
+                    for line in table_match.group(1).splitlines()
+                    if line.strip()
+                ]
+
+                current_option = None
+                description_parts = []
+
+                def save_option():
+                    if current_option is None:
+                        return
+
+                    description = " ".join(description_parts)
+                    description = re.sub(r"\s+", " ", description).strip()
+                    option_descriptions.append({
+                        "option_id": current_option,
+                        "description": description
+                    })
+
+                for line in lines:
+                    if re.fullmatch(r"-\s*-\s*-", line):
+                        save_option()
+                        current_option = None
+                        description_parts = []
+                        continue
+
+                    if current_option is None:
+                        if re.fullmatch(r"[A-Z0-9]{3,5}", line, re.IGNORECASE):
+                            current_option = line.upper()
+                    else:
+                        description_parts.append(line)
+
+                save_option()
+                info["option_descriptions"] = option_descriptions
+                info["device_options"] = ",".join(option["option_id"] for option in option_descriptions)
+            else:
+                print(" > Option table not found in PDF.")
+        else:
+            info["device_options"] = extract_device_options(text=text, device_model=model)
+
+        if re.search(r"\bUnit\s+self[-\s]?" r"test\s+passed\b", flat_text, flags=re.IGNORECASE):
+            info["self_test_status"] = ("PASSED")
+
+        elif re.search(r"\bUnit\s+self[-\s]?" r"test\s+failed\b", flat_text, flags=re.IGNORECASE):
+            info["self_test_status"] = ("FAILED")
+
+        if info["self_test_status"] == "Unknown" and re.match(r"^E50\d{2}[A-Z]$", model):
+            final_status_match = re.search(
+                r"Final\s+Status\s+"
+                r"(PASSED|FAILED|PASS|FAIL)",
+                flat_text,
+                re.IGNORECASE
+            )
+
+            if final_status_match:
+                final_status = (final_status_match.group(1).upper())
+
+                if final_status in ("PASS", "PASSED"):
+                    info["self_test_status"] = "PASSED"
+                elif final_status in ("FAIL", "FAILED"):
+                    info["self_test_status"] = "FAILED"
+
+        print("\n" + "=" * 70)
+        print("PDF INFORMATION")
+        print("=" * 70)
+        print(f"Model              : " f"{info['device_type']}")
+        print(f"Serial Number      : " f"{info['device_name']}")
+        print(f"Firmware           : " f"{info['firmware_version']}")
+        print(f"Windows            : " f"{info['windows_version']}")
+        print(f"Calibration Date   : " f"{info['calibration_date']}")
+        print(f"Calibration Exp.   : " f"{info['calibration expiration date']}")
+        print(f"Options            : " f"{info['device_options']}")
+        print(f"Self Test          : " f"{info['self_test_status']}")
+        if info["option_descriptions"]:
+            print("\nOption Descriptions:")
+            for option in info["option_descriptions"]:
+                print(
+                    f"  "
+                    f"{option['option_id']:<8} "
+                    f"{option['description']}"
+                )
+
+        print("=" * 70 + "\n")
+
+        return info
+
+    except Exception as error:
+
+        logging.exception("Failed to extract device " f"information from PDF: {error}")
+
+    return info
+
+"""def extract_device_info_from_pdf(pdf_file):
 
     info = {
             "device_type": "Unknown",
@@ -1102,7 +1350,7 @@ def extract_device_info_from_pdf(pdf_file):
     except Exception as error:
         logging.exception(f"Failed to extract device information from PDF: {error}")
 
-    return info
+    return info"""
 
 """def extract_device_info_from_pdf(pdf_file):
 
@@ -1546,6 +1794,375 @@ def extract_n90_license_manager_options(text, device_model=None):
 
     return cleaned_options
 
+def build_new_e50_device_email(pdf_info, firmware_images, system_images, system_info_images, license_images, preview=False):
+
+    firmware_images = firmware_images or []
+    system_images = system_images or []
+    system_info_images = system_info_images or []
+    license_images = license_images or []
+
+    model = pdf_info.get("device_type", "Unknown")
+    serial_number = pdf_info.get("device_name", "Unknown")
+    firmware_version = pdf_info.get("firmware_version", "Unknown")
+    windows_version = pdf_info.get("windows_version", "Unknown")
+    self_test_status = pdf_info.get("self_test_status", "Unknown")
+    calibration_expiration_date = (pdf_info.get("calibration expiration date", "Unknown"))
+    device_options = pdf_info.get("device_options", "Unknown")
+    option_descriptions = pdf_info.get("option_descriptions", [])
+
+    # =====================================================
+    # CALIBRATION DUE DATE
+    # =====================================================
+
+    if (not calibration_expiration_date or calibration_expiration_date == "Unknown"):
+        calibration_expiration_date = ("None")
+
+    if isinstance(device_options, str):
+        if (not device_options or device_options.lower() == "unknown"):
+            options_text = "None"
+        else:
+            options_text = (device_options)
+    elif isinstance(device_options, (list, tuple)):
+        option_ids = []
+        for option in device_options:
+            if isinstance(option, (list, tuple)):
+                if option:
+                    option_ids.append(str(option[0]).strip())
+            elif isinstance(option, dict):
+                option_id = option.get("option_id", option.get("id",""))
+                if option_id:
+                    option_ids.append(str(option_id).strip())
+            else:
+                option_ids.append(str(option).strip())
+        options_text = ",".join(option_ids)
+        if not options_text:
+            options_text = "None"
+    else:
+        options_text = "None"
+
+    # =====================================================
+    # HARDWARE OPTIONS
+    # =====================================================
+
+    hardware_options_html = ""
+    if option_descriptions:
+        hardware_options_html += """
+        <br>
+        <p style="
+            margin-top:10px;
+            margin-bottom:15px;
+        ">
+            <b>Hardware options:</b>
+        </p>
+        """
+        for option in option_descriptions:
+            option_id = str(option.get("option_id", "")).strip()
+            description = str(option.get("description", "")).strip()
+            option_id_html = html.escape(option_id)
+            description_html = html.escape(description)
+            if description:
+                hardware_options_html += f"""
+                <p style="
+                    margin-top:0;
+                    margin-bottom:15px;
+                ">
+                    Option
+                    <b>{option_id_html}</b>
+                    ({description_html})
+                </p>
+                """
+            else:
+                hardware_options_html += f"""
+                <p style="
+                    margin-top:0;
+                    margin-bottom:15px;
+                ">
+                    Option
+                    <b>{option_id_html}</b>
+                </p>
+                """
+    else:
+        hardware_options_html = """
+        <br>
+        <p>
+            <b>Hardware options:</b>
+        </p>
+        <p>
+            None
+        </p>
+        """
+    # =====================================================
+    # SYSTEM IMAGES
+    # =====================================================
+
+    system_html = ""
+    if system_images:
+        system_html += """
+        <br>
+        <hr>
+        <h3>
+            System Information
+        </h3>
+        """
+        for index, image_path in enumerate(system_images, start=1):
+            image_path = Path(image_path)
+            if preview:
+                image_src = (image_path.resolve().as_uri())
+            else:
+                image_src = (f"cid: system_image_{index}")
+
+            system_html += f"""
+            <p>
+                <b>
+                    System Information
+                    #{index}
+                </b>
+            </p>
+            <p>
+                <img
+                    src="{image_src}"
+                    style="
+                        max-width:900px;
+                        width:100%;
+                        height:auto;
+                        border:
+                            1px solid
+                            #cccccc;
+                    "
+                >
+            </p>
+            """
+    license_html = ""
+    if license_images:
+        license_html += """
+            <br>
+            <hr>
+            <h3>License Information</h3>
+            """
+
+        for index, image_path in enumerate(license_images, start=1):
+            image_path = Path(image_path)
+
+            if preview:
+                image_src = image_path.resolve().as_uri()
+            else:
+                image_src = f"cid:license_image_{index}"
+
+            license_html += f"""
+                <p>
+                    <b>License Information #{index}</b>
+                </p>
+                <p>
+                    <img
+                        src="{image_src}"
+                        style="
+                            max-width:900px;
+                            width:100%;
+                            height:auto;
+                            border:1px solid #cccccc;
+                        "
+                    >
+                </p>
+                """
+    firmware_html = ""
+    if firmware_images:
+        firmware_html += """
+            <br>
+            <hr>
+            <h3>
+                About Network Analyzer + Instrument Options Information
+            </h3>
+            """
+        for index, image_path in enumerate(firmware_images, start=1):
+            image_path = Path(image_path)
+            if preview:
+                image_src = (image_path.resolve().as_uri())
+            else:
+                image_src = (f"cid: firmware_images_{index}")
+
+            firmware_html += f"""
+                <p>
+                    <b>
+                        About Network Analyzer + Instrument Options Information
+                        #{index}
+                    </b>
+                </p>
+                <p>
+                    <img
+                        src="{image_src}"
+                        style="
+                            max-width:900px;
+                            width:100%;
+                            height:auto;
+                            border:
+                                1px solid
+                                #cccccc;
+                        "
+                    >
+                </p>
+                """
+    system_info_html = ""
+    if system_info_images:
+        system_info_html += """
+                <br>
+                <hr>
+                <h3>
+                    Windows Information
+                </h3>
+                """
+        for index, image_path in enumerate(system_info_images, start=1):
+            image_path = Path(image_path)
+            if preview:
+                image_src = (image_path.resolve().as_uri())
+            else:
+                image_src = (f"cid: system_info_images{index}")
+
+            system_info_html += f"""
+                    <p>
+                        <b>
+                            Windows Information
+                            #{index}
+                        </b>
+                    </p>
+                    <p>
+                        <img
+                            src="{image_src}"
+                            style="
+                                max-width:900px;
+                                width:100%;
+                                height:auto;
+                                border:
+                                    1px solid
+                                    #cccccc;
+                            "
+                        >
+                    </p>
+                    """
+    # =====================================================
+    # SUBJECT
+    # =====================================================
+    subject = (
+        f"[INBOUND] "
+        f"{model},"
+        f"{serial_number},"
+        f"{firmware_version} "
+        f"as bought from Lake View"
+    )
+    # =====================================================
+    # HTML BODY
+    # =====================================================
+
+    html_body = f"""
+    <html>
+    <body style="
+        font-family:
+            Aptos,
+            Calibri,
+            Arial,
+            sans-serif;
+        font-size:11pt;
+        direction:ltr;
+        color:#000000;
+    ">
+        <ol>
+          <li style="
+                margin-bottom:15px;
+            ">
+                <b>Model:</b>
+                {html.escape(
+                    str(model)
+                )}
+            </li>
+            <li style="
+                margin-bottom:15px;
+            ">
+                <b>S/N:</b>
+                {html.escape(
+                    str(serial_number)
+                )}
+            </li>
+            <li style="
+                margin-bottom:15px;
+            ">
+                <b>Options:</b>
+                {html.escape(
+                    str(options_text)
+                )}
+            </li>
+            <li style="
+                margin-bottom:15px;
+            ">
+                <b>F/W:</b>
+                {html.escape(
+                    str(firmware_version)
+                )}
+            </li>
+            <li style="
+                margin-bottom:15px;
+            ">
+                <b>OS:</b>
+                {html.escape(
+                    str(windows_version)
+                )}
+            </li>
+            <li style="
+                margin-bottom:15px;
+            ">
+                <b>Diagnostic Test:</b>
+                {html.escape(
+                    str(self_test_status)
+                )}
+            </li>
+            <li style="
+                margin-bottom:15px;
+            ">
+                <b>
+                    Calibration Due Date:
+                </b>
+                {html.escape(
+                    str(
+                        calibration_expiration_date
+                    )
+                )}
+            </li>
+        </ol>
+        {hardware_options_html}
+        {firmware_html}
+        {license_html}
+        {system_html}
+        {system_info_html}
+    </body>
+    </html>
+    """
+    # =====================================================
+    # DEBUG
+    # =====================================================
+
+    print("\n" + "=" * 70)
+    print("E506x NEW DEVICE EMAIL")
+    print("=" * 70)
+    print(f"Model           : {model}")
+    print(f"Serial Number   : {serial_number}")
+    print(f"Options         : {options_text}")
+    print(f"Firmware        : {firmware_version}")
+    print(f"OS              : {windows_version}")
+    print(f"Diagnostic Test : {self_test_status}")
+    print(f"Calibration Due : {calibration_expiration_date}")
+    if option_descriptions:
+        print("\nHardware options:")
+        for option in option_descriptions:
+            print(
+                f"  "
+                f"{option.get('option_id', ''):<8} "
+                f"{option.get('description', '')}"
+            )
+
+    print("\nSubject:")
+    print(subject)
+    print("=" * 70 + "\n")
+
+    return subject, html_body
+
 # Existing option extraction for E506x devices.
 def extract_e506x_options(text):
 
@@ -1681,6 +2298,7 @@ def get_e50_email_images(serial_number):
 
     firmware_images = load_images(screenshot_root, serial_number, "Firmware", valid_extensions)
     system_images = load_images(screenshot_root, serial_number, "System", valid_extensions)
+    license_images = load_images(screenshot_root, serial_number, "License", valid_extensions)
     system_info_images = load_images(screenshot_root, serial_number,"System Info", valid_extensions)
 
     print("Firmware images:")
@@ -1691,11 +2309,15 @@ def get_e50_email_images(serial_number):
     for image in system_images:
         print("   ", image)
 
+    print("License images:")
+    for image in license_images:
+        print("   ", image)
+
     print("System Info images:")
     for image in system_info_images:
         print("   ", image)
 
-    return firmware_images, system_images, system_info_images
+    return firmware_images, system_images, license_images, system_info_images
 
 def load_images(screenshot_root, serial_number, folder_name, valid_extensions):
 
@@ -1783,12 +2405,12 @@ def main():
          "Benny.a@tlv-mm.com"
     ]
 
-    device_name = "N9041B"
-    device_type = "Signal Analyzer"
+    device_name = "E5080B"
+    device_type = "Network Analyzer"
     slot = "SLOT1"
     ip = "192.168.1.100"
     final_status = "PASS"
-    pdf_file = r"C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results\MY57103319\MY57103319.pdf"
+    pdf_file = r"C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results\MY59202793\MY59202793.pdf"
 
     pdf_info = extract_device_info_from_pdf(pdf_file)
 
