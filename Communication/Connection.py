@@ -503,7 +503,7 @@ def calibExpartion(extra_data):
 
 def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_status, pdf_file, extra_data, is_new_device):
 
-    preview = True
+    preview = False
 
     if not recipients:
         print("Email recipients list is empty.")
@@ -2405,12 +2405,12 @@ def main():
          "Benny.a@tlv-mm.com"
     ]
 
-    device_name = "E5080B"
+    device_name = "E5061B"
     device_type = "Network Analyzer"
     slot = "SLOT1"
     ip = "192.168.1.100"
     final_status = "PASS"
-    pdf_file = r"C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results\MY59202793\MY59202793.pdf"
+    pdf_file = r"C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results\MY49810546\MY49810546.pdf"
 
     pdf_info = extract_device_info_from_pdf(pdf_file)
 
