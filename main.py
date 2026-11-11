@@ -354,17 +354,27 @@ class TestWorker(QThread):
                 page_width = A4[0] - doc.leftMargin - doc.rightMargin
                 num_cols = len(headers)
                 if title == "Keysight License Manager":
-                    col_widths = [
-                        0.8 * inch,
-                        2.3 * inch,
-                        0.7 * inch,
-                        1.4 * inch,
-                        0.6 * inch,
-                        0.5 * inch,
-                        0.6 * inch,
-                        0.7 * inch,
-                    ]
 
+                    if num_cols == 2:
+                        col_widths = [
+                            1.5 * inch,
+                            page_width - 1.5 * inch
+                        ]
+
+                    elif num_cols == 8:
+                        col_widths = [
+                            0.8 * inch,
+                            2.3 * inch,
+                            0.7 * inch,
+                            1.4 * inch,
+                            0.6 * inch,
+                            0.5 * inch,
+                            0.6 * inch,
+                            0.7 * inch,
+                        ]
+
+                    else:
+                        col_widths = [page_width / num_cols] * num_cols
                 else:
                     col_widths = [page_width / num_cols] * num_cols
                 data_table = Table(table_data, colWidths=col_widths, repeatRows=1, splitByRow=True)
@@ -459,6 +469,8 @@ class TestWorker(QThread):
             return N90XXB_System_Test
         if is_e506x(device_model):
             return E506x_System_Test
+        if is_e508x(device_model):
+            return E508x_System_Test
 
         return None
 
@@ -852,8 +864,8 @@ class MainWindow(QWidget):
             self.rows.append({
                 "checkbox": cb,
                 "slot_label": slot_label,
-                "ip": f"10.1.44.{200 + i}",
-                #"ip": f"192.168.1.{200 + i}",
+                #"ip": f"10.1.44.{200 + i}",
+                "ip": f"192.168.1.{200 + i}",
                 "unit_label": unit_label,
                 "sn_label": sn_label,
                 "unit": "----",

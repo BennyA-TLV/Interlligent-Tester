@@ -4,7 +4,6 @@ from email.message import EmailMessage
 import win32com.client
 from pypdf import PdfReader
 import subprocess
-import socket
 import csv
 import tomllib
 import smtplib
@@ -789,46 +788,6 @@ def device_information(device, worker=None, logger=None, timeout=600):
 def wait_for_ping(ip, worker=None, logger=None, timeout=300, interval=5):
 
     results_list = []
-    start_time = time.monotonic()
-
-    while time.monotonic() - start_time < timeout:
-        # 1. Check PING
-        try:
-            result = subprocess.run(["ping", "-n", "1", "-w", "1000", ip],capture_output=True,text=True,timeout=3)
-            if result.returncode == 0:
-                print(f" > Device {ip} is online (PING)")
-                report_step(f"Device {ip} is online (PING)","PASS", 1, results_list, " ", None, worker, logger)
-                return True
-
-        except (subprocess.TimeoutExpired, OSError):
-            pass
-        # 2. Check TCP ports
-        for port, service in [(5985, "WinRM"), (3389, "Remote Desktop")]:
-            try:
-                with socket.create_connection((ip, port), timeout=2):
-                    print(f" > Device {ip} is online ({service}, port {port})")
-                    report_step(f"Device {ip} is online ({service}, port {port})","PASS", 1, results_list, " ", None, worker, logger)
-                    return True
-
-            except (socket.timeout, OSError):
-                pass
-        # 3. All checks failed
-        print(f" > Waiting for device {ip}...")
-        report_step(f"Waiting for device {ip}...","INFO", 1, results_list, " ", None, worker, logger)
-
-        remaining = timeout - (time.monotonic() - start_time)
-
-        if remaining > 0:
-            time.sleep(min(interval, remaining))
-
-    print(f" > Timeout: device {ip} is not reachable")
-    report_step(f"Timeout: device {ip} is not reachable","FAIL", 1, results_list, " ", None, worker, logger)
-
-    return False
-
-"""def wait_for_ping(ip, worker=None, logger=None, timeout=300, interval=5):
-
-    results_list = []
     start_time = time.time()
 
     while time.time() - start_time < timeout:
@@ -852,7 +811,7 @@ def wait_for_ping(ip, worker=None, logger=None, timeout=300, interval=5):
     print(f" > Timeout: device {ip} did not reply to ping")
     report_step(f"Timeout: device {ip} did not reply to ping", "FAIL", 1, results_list, " ", None, worker, logger)
 
-    return False"""
+    return False
 
 def extract_device_info_from_pdf(pdf_file):
 

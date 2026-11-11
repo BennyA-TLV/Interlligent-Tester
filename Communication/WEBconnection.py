@@ -2,12 +2,14 @@ from selenium import webdriver
 from bs4 import BeautifulSoup
 from Communication.Connection import *
 from selenium.common import TimeoutException
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 import undetected_chromedriver as uc
 from pathlib import Path
+import traceback
 import tempfile
 import psutil
 import winreg
@@ -229,16 +231,20 @@ def get_latest_for_os(data, target_os):
 
 def parse_keysight_version(version):
 
-    match = re.fullmatch(r"\s*([A-Za-z])\.(\d+)(?:\.(\d+))?\s*", version)
+    match = re.fullmatch(r"\s*([A-Za-z])\.(\d+)(?:\.(\d+))?(?:\.(\d+))?\s*", version)
 
     if not match:
         raise ValueError(f"Invalid Keysight version: {version}")
 
-    return (
-        match.group(1).upper(),
-        int(match.group(2)),
-        int(match.group(3) or 0)
+    prefix = match.group(1).upper()
+    major = int(match.group(2))
+
+    patch = (
+        int(match.group(3) or 0),
+        int(match.group(4) or 0)
     )
+
+    return prefix, major, patch
 
 
 def normalize_os(value):
@@ -292,7 +298,7 @@ def get_upgrade_versions_for_os(current_version, target_os, url):
             continue
 
         #if prefix == current_prefix and major == current_major:
-            continue
+            #continue
 
         stage = (prefix, major)
         existing = best_version_per_stage.get(stage)
@@ -341,7 +347,7 @@ def get_chrome_major_version():
         return None
 
 # The get keysight software versions with the OS details function
-def get_keysight_versions_with_os(url):
+def get_keysight_versions_with_os_old(url):
     global results
     options = uc.ChromeOptions()
     options.add_argument('--blink-settings=imagesEnabled=false')
@@ -381,7 +387,7 @@ def get_keysight_versions_with_os(url):
         chunks = full_html.split('class="accordion1"')
 
         for chunk in chunks[1:]:
-            v_match = re.search(r'[A-Z]\.\d+\.\d+', chunk)
+            v_match = re.search(r'\b[A-Z]\.\d+(?:\.\d+){1,3}\b', chunk, re.I)
             v_num = v_match.group(0) if v_match else None
             if v_num:
                 raw_os = re.findall(r'Windows\s*(?:11|10|8|7|Server|XP)', chunk, re.I)
@@ -395,6 +401,248 @@ def get_keysight_versions_with_os(url):
         safe_close_driver(driver)
     except Exception as e:
         print(f" > Exception in get_active_session_id: {e}")
+
+    return results
+
+def get_keysight_versions_with_os(url):
+
+    results = []
+    driver = None
+
+    options = uc.ChromeOptions()
+    options.add_argument("--blink-settings=imagesEnabled=false")
+    options.add_argument("--start-maximized")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--remote-debugging-port=0")
+
+    profile_dir = tempfile.mkdtemp(prefix="chrome_keysight_")
+    options.add_argument(f"--user-data-dir={profile_dir}")
+
+    try:
+        # =====================================================
+        # START CHROME
+        # =====================================================
+
+        chrome_version = get_chrome_major_version()
+
+        print(f" > Chrome version: {chrome_version}")
+
+        if chrome_version:
+            driver = uc.Chrome(
+                version_main=chrome_version,
+                options=options,
+                use_subprocess=True
+            )
+        else:
+            driver = uc.Chrome(
+                options=options,
+                use_subprocess=True
+            )
+
+        driver.set_window_size(400, 300)
+
+        print(" > Chrome started successfully")
+
+        show_popup_non_blocking(
+            "Automation started. Do not close the browser!\n"
+            "Looking for the Newest Version",
+            "System Message",
+            10
+        )
+
+        # =====================================================
+        # OPEN KEYSIGHT WEBSITE
+        # =====================================================
+
+        page_loaded = False
+
+        for attempt in range(1, 3):
+
+            try:
+                print(f" > Loading Keysight page (attempt {attempt})")
+
+                driver.get(url)
+
+                WebDriverWait(driver, 40).until(
+                    lambda d: d.execute_script(
+                        "return document.readyState"
+                    ) == "complete"
+                )
+
+                print(" > Page loaded successfully")
+
+                page_loaded = True
+                break
+
+            except WebDriverException as e:
+                print(
+                    f" > Error loading Keysight page "
+                    f"(attempt {attempt}): {type(e).__name__}: {e}"
+                )
+
+                if attempt < 2:
+                    time.sleep(3)
+
+        if not page_loaded:
+            raise RuntimeError("Failed to load Keysight page")
+
+        # =====================================================
+        # OPEN PREVIOUS VERSIONS TAB
+        # =====================================================
+
+        try:
+            print(" > Searching for Previous Versions tab")
+
+            wait = WebDriverWait(driver, 40)
+
+            print(" > Current URL:", driver.current_url)
+            print(" > Page title:", driver.title)
+
+            # Search all elements containing Previous Versions
+            elements = driver.find_elements(
+                By.XPATH,
+                "//*[contains(translate(normalize-space(.), "
+                "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+                "'abcdefghijklmnopqrstuvwxyz'), 'previous versions')]"
+            )
+
+            print(f" > Found {len(elements)} matching elements")
+
+            for i, element in enumerate(elements[:15]):
+                print(
+                    f"Element {i}:",
+                    f"TAG={element.tag_name}",
+                    f"TEXT={element.text[:150]!r}",
+                    f"DISPLAYED={element.is_displayed()}"
+                )
+
+            # Try several possible selectors
+            selectors = [
+                (By.XPATH, "//li[contains(., 'Previous Versions')]"),
+                (By.XPATH, "//a[contains(., 'Previous Versions')]"),
+                (By.XPATH, "//button[contains(., 'Previous Versions')]"),
+                (By.XPATH, "//*[normalize-space()='Previous Versions']"),
+                (By.CSS_SELECTOR, ".accordion1")
+            ]
+
+            tab = None
+
+            for by, selector in selectors:
+
+                matches = driver.find_elements(by, selector)
+
+                print(f" > Selector {selector}: {len(matches)} matches")
+
+                if selector == ".accordion1":
+                    continue
+
+                for element in matches:
+                    if element.is_displayed():
+                        tab = element
+                        break
+
+                if tab:
+                    break
+
+            if tab:
+                driver.execute_script("arguments[0].click();", tab)
+                print(" > Previous Versions clicked")
+                time.sleep(5)
+            else:
+                print(" > Previous Versions tab NOT FOUND")
+
+                driver.save_screenshot(
+                    r"C:\Users\benny\Desktop\keysight_debug.png"
+                )
+
+                print(" > Debug screenshot saved")
+                raise RuntimeError("Previous Versions tab not found")
+
+        except Exception as e:
+            print(
+                f" > Failed to open Previous Versions tab: "
+                f"{type(e).__name__}: {e}"
+            )
+
+            raise
+
+        # =====================================================
+        # READ PAGE SOURCE
+        # =====================================================
+
+        print(" > Reading Keysight HTML")
+
+        full_html = driver.page_source
+
+        print(f" > HTML size: {len(full_html)} characters")
+
+        chunks = full_html.split('class="accordion1"')
+
+        print(f" > Found {len(chunks) - 1} accordion sections")
+
+        # =====================================================
+        # EXTRACT VERSIONS AND OS
+        # =====================================================
+
+        for chunk in chunks[1:]:
+
+            v_match = re.search(
+                r"[A-Z]\.\d+\.\d+",
+                chunk
+            )
+
+            version = v_match.group(0) if v_match else None
+
+            if not version:
+                continue
+
+            raw_os = re.findall(
+                r"Windows\s*(?:11|10|8|7|Server|XP)",
+                chunk,
+                re.I
+            )
+
+            clean_os = sorted(
+                set(
+                    " ".join(os_name.split()).strip()
+                    for os_name in raw_os
+                )
+            )
+
+            results.append({
+                "Version": version,
+                "OS": clean_os
+            })
+
+            print(f" > Version: {version} | OS: {clean_os}")
+
+        print(f" > Total versions found: {len(results)}")
+
+    except Exception as e:
+
+        print("\n" + "=" * 60)
+        print("ERROR in get_keysight_versions_with_os")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {e}")
+        traceback.print_exc()
+        print("=" * 60)
+
+    finally:
+
+        if driver is not None:
+            try:
+                safe_close_driver(driver)
+                print(" > Chrome closed successfully")
+
+            except Exception as e:
+                print(
+                    f" > Error closing Chrome: "
+                    f"{type(e).__name__}: {e}"
+                )
 
     return results
 
@@ -695,17 +943,22 @@ def safe_close_driver(driver):
 if __name__ == "__main__":
 
     target_os = "Windows 10"
+    firmwareUnitVer = "A.20.80.06"
     target_url_folder = load_configFile("url_path")
-    upgrade_path = ['B.06.30', 'C.07.02']
-    url = get_urls("E5061B", target_url_folder)
+    #upgrade_path = ['B.06.30', 'C.07.02']
+    url = get_urls("E5080B", target_url_folder)
 
     """all_versions = get_keysight_versions_with_os(url)
     result = get_latest_for_os(all_versions, target_os)
     print(f"Latest Version for {target_os}: {result['Version']}")
     print(f"Download Link: {result['Download']}")"""
 
+
     latest = get_latest_version_for_os(target_os, url)
     print(f"The latest version for {target_os} is: {latest}")
+
+    upgrade_path = get_upgrade_versions_for_os(firmwareUnitVer, target_os, url)
+    print(f"The upgrade_path {upgrade_path}")
 
     link = download_keysight_version(latest, url, download=True)
     print(f"The firmware {latest} file is in: {link}")

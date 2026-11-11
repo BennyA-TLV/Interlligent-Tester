@@ -6,7 +6,9 @@ import socket
 import shutil
 import base64
 import winrm
+import uuid
 import time
+import json
 import sys
 import os
 import re
@@ -519,7 +521,274 @@ class WINconn:
 
         #return f"Task triggered for {current_user}"
 
-    def wait_for_license_manager_window(self, timeout=120, poll_interval=2, stable_checks_required=5):
+    def wait_for_license_manager_window(self, timeout=120, poll_interval=2, stable_checks_required=3):
+
+        if not self.session:
+            self.connect()
+
+        task_name = "CHECK_LICENSE_WINDOW"
+        script_file = r"C:\Windows\Temp\check_license_window.ps1"
+        result_file = r"C:\Windows\Temp\license_window.txt"
+        result = self.session.run_ps("(Get-CimInstance Win32_ComputerSystem).UserName")
+        current_user = result.std_out.decode(errors="ignore").strip()
+
+        if not current_user:
+            return False, "No interactive Windows user found."
+        print(f" > Checking License Manager for {current_user}...")
+
+        cleanup_ps = (
+            f'Remove-Item "{result_file}" '
+            f'-Force -ErrorAction SilentlyContinue; '
+            f'Remove-Item "{script_file}" '
+            f'-Force -ErrorAction SilentlyContinue; '
+            f'Unregister-ScheduledTask '
+            f'-TaskName "{task_name}" '
+            f'-Confirm:$false '
+            f'-ErrorAction SilentlyContinue'
+        )
+
+        self.session.run_ps(cleanup_ps)
+
+        create_script_ps = rf"""
+        $lines = @(
+        '$ErrorActionPreference = "SilentlyContinue"'
+        '$p = Get-Process -Name "KeysightLicenseManager" -ErrorAction SilentlyContinue | Where-Object {{ $_.MainWindowHandle -ne 0 }} | Select-Object -First 1'
+        'if ($p) {{'
+        '    $result = "FOUND|" + $p.Id + "|" + $p.SessionId + "|" + $p.MainWindowHandle.ToInt64() + "|" + $p.MainWindowTitle'
+        '    Set-Content -Path "{result_file}" -Value $result -Encoding ASCII'
+        '}} else {{'
+        '    Set-Content -Path "{result_file}" -Value "NOT_FOUND" -Encoding ASCII'
+        '}}'
+        )
+    
+        Set-Content `
+            -Path "{script_file}" `
+            -Value $lines `
+            -Encoding UTF8
+        """
+
+        result = self.session.run_ps(create_script_ps)
+        error = result.std_err.decode( errors="ignore").strip()
+
+        if (error and "CLIXML" not in error and "Preparing modules" not in error):
+            print(f" > Error creating check script: {error}")
+
+        result = self.session.run_ps(
+            rf"""
+        if (Test-Path "{script_file}")
+        {{
+            Write-Output "OK"
+        }}
+        else
+        {{
+            Write-Output "FAILED"
+        }}
+        """
+        )
+
+        script_status = result.std_out.decode(errors="ignore").strip()
+        if script_status != "OK":
+            print(" > Failed to create remote PowerShell script.")
+            return False, ("Could not create License Manager check script.")
+        print(" > Remote window check script created.")
+
+        create_task_ps = rf"""
+        $action = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{script_file}"'
+    
+        $principal = New-ScheduledTaskPrincipal `
+            -UserId "{current_user}" `
+            -LogonType Interactive `
+            -RunLevel Highest
+    
+        $settings = New-ScheduledTaskSettingsSet `
+            -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
+    
+        Register-ScheduledTask `
+            -TaskName "{task_name}" `
+            -Action $action `
+            -Principal $principal `
+            -Settings $settings `
+            -Force | Out-Null
+        """
+
+        result = self.session.run_ps(create_task_ps)
+        create_error = result.std_err.decode(errors="ignore").strip()
+        result = self.session.run_ps(
+            rf"""
+        if (Get-ScheduledTask `
+                -TaskName "{task_name}" `
+                -ErrorAction SilentlyContinue)
+        {{
+            Write-Output "OK"
+        }}
+        else
+        {{
+            Write-Output "FAILED"
+        }}
+        """
+        )
+
+        task_status = result.std_out.decode(errors="ignore").strip()
+        if task_status != "OK":
+            print(" > Failed to create interactive check task.")
+            if create_error:
+                print(f" > Error: {create_error}")
+            return False, ("Could not create License Manager " "window check task.")
+
+        print(" > Interactive check task created.")
+        start_time = time.time()
+        stable_checks = 0
+        previous_signature = None
+
+        try:
+            while time.time() - start_time < timeout:
+                self.session.run_ps(
+                    f'Remove-Item "{result_file}" '
+                    f'-Force -ErrorAction SilentlyContinue'
+                )
+                start_result = self.session.run_ps(
+                    f'Start-ScheduledTask '
+                    f'-TaskName "{task_name}"'
+                )
+
+                start_error = start_result.std_err.decode(errors="ignore").strip()
+                if (start_error and "CLIXML" not in start_error and "Preparing modules" not in start_error):
+                    print(f" > Start task error: {start_error}")
+
+                output = ""
+
+                for _ in range(20):
+                    time.sleep(0.5)
+
+                    result = self.session.run_ps(
+                        rf"""
+                    if (Test-Path "{result_file}")
+                    {{
+                        Get-Content "{result_file}" -Raw
+                    }}
+                    """
+                    )
+
+                    output = result.std_out.decode(errors="ignore").strip()
+                    if output:
+                        break
+                if not output:
+                    print(" > Waiting for interactive window check...")
+
+                    task_info = self.session.run_ps(
+                        rf"""
+                    $t = Get-ScheduledTask `
+                        -TaskName "{task_name}" `
+                        -ErrorAction SilentlyContinue
+                
+                    $i = Get-ScheduledTaskInfo `
+                        -TaskName "{task_name}" `
+                        -ErrorAction SilentlyContinue
+                
+                    if ($t -and $i)
+                    {{
+                        Write-Output (
+                            "State=" +
+                            $t.State +
+                            ";LastResult=" +
+                            $i.LastTaskResult
+                        )
+                    }}
+                    """
+                    )
+
+                    task_output = task_info.std_out.decode(errors="ignore").strip()
+                    if task_output:
+                        print(f" > Task status: {task_output}")
+                    stable_checks = 0
+                    previous_signature = None
+                    time.sleep(poll_interval)
+                    continue
+
+                if output == "NOT_FOUND":
+                    print(" > Waiting for License Manager window...")
+                    stable_checks = 0
+                    previous_signature = None
+                    time.sleep(poll_interval)
+                    continue
+
+                if not output.startswith("FOUND|"):
+                    print(f" > Unexpected result: {output}")
+                    stable_checks = 0
+                    previous_signature = None
+                    time.sleep(poll_interval)
+                    continue
+
+                parts = output.split("|", 4)
+                if len(parts) != 5:
+                    print(f" > Invalid result: {output}")
+                    stable_checks = 0
+                    previous_signature = None
+                    time.sleep(poll_interval)
+                    continue
+
+                pid = parts[1].strip()
+                session_id = parts[2].strip()
+                handle = parts[3].strip()
+                title = parts[4].strip()
+
+                try:
+                    handle_value = int(handle)
+                except ValueError:
+                    handle_value = 0
+
+                if handle_value == 0:
+                    print(" > License Manager found, but Handle=0.")
+
+                    stable_checks = 0
+                    previous_signature = None
+                    time.sleep(poll_interval)
+                    continue
+
+                print(
+                    f" > License Manager window: "
+                    f"PID={pid}, "
+                    f"Session={session_id}, "
+                    f"Handle={handle}, "
+                    f"Title='{title}'"
+                )
+
+                current_signature = (pid, session_id, handle, title)
+                if current_signature == previous_signature:
+                    stable_checks += 1
+                else:
+                    stable_checks = 1
+                    previous_signature = current_signature
+                print(
+                    f" > License Manager detected: "
+                    f"stable={stable_checks}/"
+                    f"{stable_checks_required}"
+                )
+
+                if stable_checks >= stable_checks_required:
+                    print(" > License Manager window is READY.")
+                    return True, ("License Manager window is open " "in interactive Windows session.")
+                time.sleep(poll_interval)
+
+        finally:
+            cleanup_final = (
+                f'Remove-Item "{result_file}" '
+                f'-Force -ErrorAction SilentlyContinue; '
+                f'Remove-Item "{script_file}" '
+                f'-Force -ErrorAction SilentlyContinue; '
+                f'Unregister-ScheduledTask '
+                f'-TaskName "{task_name}" '
+                f'-Confirm:$false '
+                f'-ErrorAction SilentlyContinue'
+            )
+
+            self.session.run_ps(cleanup_final)
+
+        return False, (f"License Manager interactive window " f"was not detected within {timeout} seconds.")
+
+    def wait_for_license_manager_window_old(self, timeout=120, poll_interval=2, stable_checks_required=5):
 
         start_time = time.time()
         stable_checks = 0
@@ -1018,6 +1287,136 @@ class WINconn:
             print(" > Error: Screenshot resulted in black screen or file not found.")
             return None
 
+    def screenshot_network_old(self, folder, serial_number, picture_name="Firmware Revision", shot=1, window_title="About E5061B", full_screen=False):
+        if not self.session:
+            self.connect()
+
+        session_id = self.get_active_session_id()
+        print(f" > Capturing E50xx Firmware window on Session: {session_id}")
+        run_id = int(time.time())
+        remote_temp = r"C:\Windows\Temp"
+        remote_nircmd = f"{remote_temp}\\nircmd.exe"
+        remote_image = f"{remote_temp}\\e50xx_firmware_{run_id}.png"
+        screenshot_path = load_configFile("screenShot_path")
+        base_path = Path(screenshot_path)
+        local_dir = (base_path / serial_number / folder)
+        local_dir.mkdir(parents=True, exist_ok=True)
+        local_image = (local_dir / f"{serial_number}_{picture_name}_{shot}.png")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        psexec_path = os.path.join(current_dir, "psexec.exe")
+
+        nircmd_args = (["savescreenshot", remote_image] if full_screen else ["savescreenshotwin", remote_image, window_title])
+        p_cmd = [psexec_path, "-accepteula", "-s", "-i", str(session_id), f"\\\\{self.target_ip}", "-u", self.username, "-p", self.password,
+            "-d", remote_nircmd, *nircmd_args]
+        result = subprocess.run(p_cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+        if result.returncode != 0:
+            print(" > PsExec error:", result.stderr.decode(errors="ignore"))
+
+        network_path = (f"\\\\{self.target_ip}" f"\\C$\\Windows\\Temp" f"\\e5061_firmware_{run_id}.png")
+
+        found = False
+
+        for _ in range(15):
+            try:
+                if (os.path.exists(network_path) and os.path.getsize(network_path) > 0):
+                    found = True
+                    break
+            except OSError:
+                pass
+            time.sleep(1)
+        if found:
+            time.sleep(1)
+            try:
+                shutil.copy2(network_path, str(local_image))
+                print(f" > SUCCESS! Firmware saved to: {local_image}")
+
+                # Remove remote temporary file
+                self.session.run_ps(
+                    f"Remove-Item "
+                    f"'{remote_image}' "
+                    f"-Force "
+                    f"-ErrorAction SilentlyContinue"
+                )
+                return str(local_image)
+
+            except Exception as e:
+
+                print(f" > Error copying file: {e}")
+                return None
+        else:
+            print(
+                " > Error: About E5061B screenshot was not created.")
+            return None
+
+    def screenshot_network(self, folder, serial_number, picture_name="Firmware Revision",  shot=1,  window_title="About E5061B", full_screen=False):
+        if not self.session:
+            self.connect()
+
+        session_id = self.get_active_session_id()
+        print(f" > Capturing screenshot on Session: {session_id}")
+        run_id = uuid.uuid4().hex[:10]
+        remote_temp = r"C:\Windows\Temp"
+        remote_nircmd = rf"{remote_temp}\nircmd.exe"
+        remote_image = rf"{remote_temp}\network_{run_id}.png"
+        screenshot_path = load_configFile("screenShot_path")
+        base_path = Path(screenshot_path)
+        local_dir = base_path / serial_number / folder
+        local_dir.mkdir(parents=True, exist_ok=True)
+        local_image = ( local_dir / f"{serial_number}_{picture_name}_{shot}.png")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        psexec_path = os.path.join(current_dir, "psexec.exe")
+
+        if full_screen:
+            print(" > Screenshot mode: FULL SCREEN")
+            nircmd_args = ["savescreenshot", remote_image]
+        else:
+            print(f" > Screenshot mode: WINDOW ({window_title})")
+            nircmd_args = [ "savescreenshotwin", remote_image, window_title]
+
+        p_cmd = [psexec_path, "-accepteula",  "-s", "-i", str(session_id), f"\\\\{self.target_ip}", "-u", self.username, "-p", self.password,
+            "-d", remote_nircmd, *nircmd_args]
+
+        result = subprocess.run(p_cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=30)
+        print(f" > PsExec return code: {result.returncode}")
+        if result.returncode != 0:
+            print(" > PsExec error:", result.stderr.decode(errors="replace"))
+        network_path = (
+            f"\\\\{self.target_ip}"
+            f"\\C$\\Windows\\Temp"
+            f"\\network_{run_id}.png"
+        )
+
+        print(f" > Waiting for screenshot: {network_path}")
+        found = False
+        for _ in range(20):
+            try:
+                if (os.path.exists(network_path) and os.path.getsize(network_path) > 0):
+                    found = True
+                    break
+            except OSError:
+                pass
+            time.sleep(1)
+
+        if found:
+            time.sleep(0.5)
+            try:
+                shutil.copy2(network_path, str(local_image))
+                print(f" > SUCCESS! Screenshot saved: {local_image}")
+                # Remove remote temporary image
+                self.session.run_ps(
+                    f"Remove-Item -LiteralPath '{remote_image}' "
+                    f"-Force -ErrorAction SilentlyContinue"
+                )
+                return str(local_image)
+
+            except Exception as e:
+                print(f" > Error copying screenshot: {e}")
+                return None
+
+        print(" > ERROR: Screenshot file was not created or is inaccessible.")
+        return None
+
     # The last page function - operat no the remote device checking if it is the lase page by scrolling
     def is_last_page(self, img_path1, img_path2):
         img1 = Image.open(img_path1).convert('RGB')
@@ -1104,6 +1503,46 @@ class WINconn:
             else:
                 prev_img = curr_img
                 report_step(name=f"System Information ScreenShot {serial_number}_{screenshot_name}_#N{page_count}", status="INFO", progress=40,results_list=results_list, value=f"System Information ScreenShot #N{page_count}", image_path=curr_img, worker=worker, logger=logger)
+
+        print("Done. All system information captured.")
+
+    # The screenshot all system information windows function - operat no the remote device
+    def capture_all_system_information(self, serial_number, results_list, worker, logger):
+        all_captured = False
+        page_count = 1
+        steps = 1
+        capture_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        screenshot_name = f"System_Info_{capture_id}"
+
+        print(" > System Information ScreenShots .....")
+        #self.press_key_remote("UP", 60)
+        prev_img = self.screenshot("System Info", serial_number, screenshot_name, page_count)
+        report_step(name=f"System Information ScreenShot #N{page_count}", status="INFO", progress=29,
+                    results_list=results_list, value=f"System Information ScreenShot #N{page_count}",
+                    image_path=prev_img, worker=worker, logger=logger)
+        self.press_key_remote("PGDN", 3)
+        while not all_captured:
+            print(f" > Processing page {page_count}...")
+
+            print(f" > Moving list {steps} Page Down.....")
+            self.press_key_remote("PGDN", steps)
+            print(" > Waiting 5 seconds to Image recovered .....")
+            time.sleep(5)
+
+            page_count += 1
+            curr_img = self.screenshot("System Info", serial_number, screenshot_name, page_count)
+
+            if self.is_last_page(prev_img, curr_img):
+                print(" !!! Reached the end of the list (Images are identical).")
+                if os.path.exists(curr_img):
+                    os.remove(curr_img)
+                all_captured = True
+            else:
+                prev_img = curr_img
+                report_step(name=f"System Information ScreenShot {serial_number}_{screenshot_name}_#N{page_count}",
+                            status="INFO", progress=29, results_list=results_list,
+                            value=f"System Information ScreenShot #N{page_count}", image_path=curr_img,
+                            worker=worker, logger=logger)
 
         print("Done. All system information captured.")
 
@@ -1570,17 +2009,7 @@ class WINconn:
         if not self.session:
             if not self.connect():
                 return "NOT_FOUND"
-        exe_names = [
-            "E5061.exe",
-            "E5062.exe",
-            "E5071.exe",
-            "E5072.exe",
-            "E5080.exe",
-            "ENA.exe",
-            "NetworkAnalyzer.exe",
-            "Network Analyzer.exe",
-            "PNA.exe",
-        ]
+        exe_names = ["E5061.exe", "E5062.exe", "E5071.exe", "E5072.exe", "E5080.exe",  "835x.exe", "ENA.exe", "NetworkAnalyzer.exe", "Network Analyzer.exe", "PNA.exe",]
         known_paths = [
             r"C:\Program Files (x86)\Agilent\E5061B\E5061.exe",
             r"C:\Program Files (x86)\Keysight\E5061B\E5061.exe",
@@ -1591,6 +2020,11 @@ class WINconn:
             r"C:\Program Files (x86)\Keysight\E5061\E5061.exe",
             r"C:\Program Files\Agilent\E5061\E5061.exe",
             r"C:\Program Files\Keysight\E5061\E5061.exe",
+
+            r"C:\Program Files\Keysight\Network Analyzer\835x.exe",
+            r"C:\Program Files\Agilent\Network Analyzer\835x.exe",
+            r"C:\Program Files (x86)\Keysight\Network Analyzer\835x.exe",
+            r"C:\Program Files (x86)\Agilent\Network Analyzer\835x.exe",
         ]
 
         for path in known_paths:
@@ -1602,9 +2036,7 @@ class WINconn:
 
             try:
                 result = self.session.run_ps(ps)
-                output = result.std_out.decode(
-                    errors="ignore"
-                ).strip()
+                output = result.std_out.decode(errors="ignore").strip()
 
                 if output:
                     print(f"Network Analyzer path found: {output}")
@@ -1618,6 +2050,8 @@ class WINconn:
         search_roots = [
             r"C:\Program Files (x86)\Agilent",
             r"C:\Program Files (x86)\Keysight",
+            r"C:\Program Files\Keysight\Network Analyzer",
+            r"C:\Program Files\Agilent\Network Analyzer",
             r"C:\Program Files\Agilent",
             r"C:\Program Files\Keysight",
             r"D:\Program Files (x86)\Agilent",
@@ -1648,10 +2082,7 @@ class WINconn:
 
                 try:
                     result = self.session.run_ps(ps)
-
-                    output = result.std_out.decode(
-                        errors="ignore"
-                    ).strip()
+                    output = result.std_out.decode(errors="ignore").strip()
 
                     if output:
                         print(f"Network Analyzer path found: {output}")
@@ -1669,17 +2100,14 @@ class WINconn:
         Get-CimInstance Win32_Process |
         Where-Object {
             $_.ExecutablePath -and
-            $_.Name -match '^(E5061|E5062|E5071|E5072|E5080|ENA|PNA|NetworkAnalyzer)\.exe$'
+            $_.Name -match '^(E5061|E5062|E5071|E5072|E5080|835x|ENA|PNA|NetworkAnalyzer)\.exe$'
         } |
         Select-Object -First 1 -ExpandProperty ExecutablePath
         """
 
         try:
             result = self.session.run_ps(ps_running)
-
-            output = result.std_out.decode(
-                errors="ignore"
-            ).strip()
+            output = result.std_out.decode(errors="ignore").strip()
 
             if output:
                 print(f"Running Network Analyzer path: {output}")
@@ -1691,6 +2119,50 @@ class WINconn:
 
         print("Network Analyzer application was not found")
         return "NOT_FOUND"
+
+    def debug_network_path(self):
+        if not self.session:
+            if not self.connect():
+                return
+
+        ps = r"""
+        $folder = 'C:\Program Files\Keysight\Network Analyzer'
+        $file = Join-Path $folder 'E835x.exe'
+
+        Write-Output "=== DEBUG ==="
+        Write-Output "Computer: $env:COMPUTERNAME"
+        Write-Output "User: $env:USERNAME"
+
+        Write-Output "=== FOLDER ==="
+        Write-Output "Folder exists: $(Test-Path -LiteralPath $folder)"
+
+        Write-Output "=== FILE ==="
+        Write-Output "File exists: $(Test-Path -LiteralPath $file -PathType Leaf)"
+
+        Write-Output "=== DIRECTORY CONTENT ==="
+        if (Test-Path -LiteralPath $folder) {
+            Get-ChildItem -LiteralPath $folder -Force |
+            Select-Object Name, FullName |
+            Format-Table -AutoSize |
+            Out-String -Width 300
+        }
+
+        Write-Output "=== MATCHING FILES ==="
+        Get-ChildItem 'C:\Program Files\Keysight' `
+            -Filter '*835*' `
+            -Recurse `
+            -File `
+            -ErrorAction SilentlyContinue |
+        Select-Object -ExpandProperty FullName
+        """
+
+        result = self.session.run_ps(ps)
+
+        print("STDOUT:")
+        print(result.std_out.decode("utf-8", errors="replace"))
+
+        print("STDERR:")
+        print(result.std_err.decode("utf-8", errors="replace"))
 
     def find_launch_xsa_path(self):
         if not self.session:
@@ -1967,6 +2439,2376 @@ class WINconn:
             print(f"get_latest_file_date Error: {e}")
             return [None, None]
 
+    def open_firmware_revision(self, timeout=15):
+        if not self.session:
+            self.connect()
+
+        result = self.session.run_cmd("quser")
+        output = result.std_out.decode(errors="ignore").strip()
+
+        username = None
+
+        for line in output.splitlines():
+            if "Active" in line:
+                parts = line.replace(">", "").split()
+
+                if parts:
+                    username = parts[0]
+                    break
+
+        if not username:
+            return False, "No active interactive user found."
+
+        host_result = self.session.run_cmd("hostname")
+        hostname = host_result.std_out.decode(errors="ignore").strip()
+
+        current_user = f"{hostname}\\{username}"
+
+        print(f" > Interactive user: {current_user}")
+        print(" > Opening Firmware Revision...")
+
+        task_name = f"E5061_Firmware_{int(time.time())}"
+        remote_script = r"C:\Windows\Temp\E5061_Open_Firmware.ps1"
+        remote_b64 = r"C:\Windows\Temp\E5061_Open_Firmware.b64"
+        remote_log = r"C:\Windows\Temp\E5061_Open_Firmware.txt"
+
+        inner_ps = r'''
+        $log = "C:\Windows\Temp\E5061_Open_Firmware.txt" 
+        "=== OPEN FIRMWARE REVISION ===" |
+            Out-File $log -Force 
+        try
+        {
+            $p =
+                Get-Process E5061 -ErrorAction Stop |
+                Select-Object -First 1
+    
+            $targetPid = $p.Id
+            "E5061 PID=$targetPid" |
+                Out-File $log -Append
+            $code = '
+        [DllImport("user32.dll")]
+        public static extern bool EnumWindows(
+            EnumWindowsProc callback,
+            IntPtr lParam);   
+        public delegate bool EnumWindowsProc(
+            IntPtr hWnd,
+            IntPtr lParam);   
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(
+            IntPtr hWnd,
+            out uint processId);   
+        [DllImport("user32.dll")]
+        public static extern int GetClassName(
+            IntPtr hWnd,
+            System.Text.StringBuilder lpClassName,
+            int nMaxCount); 
+        [DllImport("user32.dll")]
+        public static extern IntPtr SendMessage(
+            IntPtr hWnd,
+            uint Msg,
+            IntPtr wParam,
+            IntPtr lParam);
+        '  
+            Add-Type `
+                -MemberDefinition $code `
+                -Name Win32 `
+                -Namespace E5061Firmware
+            $script:targetHwnd = [IntPtr]::Zero   
+            $callback = {  
+                param(
+                    $hwnd,
+                    $lparam
+                )   
+                [uint32]$pidValue = 0  
+                [void][E5061Firmware.Win32]::GetWindowThreadProcessId(
+                    $hwnd,
+                    [ref]$pidValue
+                )  
+                if ($pidValue -eq $targetPid)
+                {
+                    $class =
+                        New-Object System.Text.StringBuilder 256   
+                    [void][E5061Firmware.Win32]::GetClassName(
+                        $hwnd,
+                        $class,
+                        256
+                    )
+                    if ($class.ToString() -eq "AgilentENAMainWindow")
+                    {
+                        $script:targetHwnd = $hwnd
+                        return $false
+                    }
+                }
+    
+                return $true
+            }  
+            $delegate =
+                [E5061Firmware.Win32+EnumWindowsProc]$callback
+      
+            [void][E5061Firmware.Win32]::EnumWindows(
+                $delegate,
+                [IntPtr]::Zero
+            )
+            if ($script:targetHwnd -eq [IntPtr]::Zero)
+            {
+                "ERROR: AgilentENAMainWindow not found" |
+                    Out-File $log -Append  
+                exit 12
+            }     
+            $hwnd = $script:targetHwnd   
+            "E5061 HWND=$hwnd" |
+                Out-File $log -Append
+            [void][E5061Firmware.Win32]::SendMessage(
+                $hwnd,
+                0x0111,
+                [IntPtr]1026,
+                [IntPtr]::Zero
+            ) 
+            "SYSTEM opened" |
+                Out-File $log -Append 
+            Start-Sleep -Milliseconds 800
+            $wshell =
+                New-Object -ComObject WScript.Shell   
+            $activated =
+                $wshell.AppActivate(
+                    "E5061B Network Analyzer"
+                )
+    
+            if (-not $activated)
+            {
+                "ERROR: Could not activate E5061" |
+                    Out-File $log -Append
+                exit 13
+            }
+            "E5061 activated" |
+                Out-File $log -Append    
+            Start-Sleep -Milliseconds 800
+            for ($i = 1; $i -le 8; $i++)
+            {
+                $wshell.SendKeys("{DOWN}")
+                Start-Sleep -Milliseconds 200
+            }
+    
+            Start-Sleep -Milliseconds 500 
+            $wshell.SendKeys("{ENTER}") 
+            "Firmware Revision opened" |
+                Out-File $log -Append  
+            Start-Sleep -Seconds 2 
+            exit 0
+        }
+        catch
+        {
+            "ERROR: $($_.Exception.Message)" |
+                Out-File $log -Append 
+            exit 20
+        }
+        '''
+
+        encoded_script = base64.b64encode(inner_ps.encode("utf-8")).decode("ascii")
+        self.session.run_ps(f"Remove-Item '{remote_b64}' " f"-Force -ErrorAction SilentlyContinue")
+        self.session.run_ps(f"Remove-Item '{remote_script}' " f"-Force -ErrorAction SilentlyContinue")
+        self.session.run_ps(f"Remove-Item '{remote_log}' " f"-Force -ErrorAction SilentlyContinue")
+        chunk_size = 500
+
+        for i in range(0, len(encoded_script), chunk_size):
+            chunk = encoded_script[i:i + chunk_size]
+            result = self.session.run_ps(f"[IO.File]::AppendAllText("  f"'{remote_b64}'," f"'{chunk}')")
+
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="ignore").strip()
+                return False, (f"Failed transferring script: {error}")
+
+        convert_cmd = (
+            f"$b=[IO.File]::ReadAllText('{remote_b64}');"
+            f"$d=[Convert]::FromBase64String($b);"
+            f"[IO.File]::WriteAllBytes('{remote_script}',$d)"
+        )
+
+        result = self.session.run_ps(convert_cmd)
+        if result.status_code != 0:
+            error = result.std_err.decode(errors="ignore").strip()
+            return False, (f"Failed creating PowerShell script: {error}")
+        self.session.run_ps(f"Remove-Item '{remote_b64}' " f"-Force -ErrorAction SilentlyContinue")
+
+        reg_cmd = f'''
+        $user = "{current_user}"
+        $action = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File {remote_script}"
+        $principal = New-ScheduledTaskPrincipal `
+            -UserId $user `
+            -LogonType Interactive `
+            -RunLevel Highest
+        $task = New-ScheduledTask `
+            -Action $action `
+            -Principal $principal
+        Register-ScheduledTask `
+            -TaskName "{task_name}" `
+            -InputObject $task `
+            -Force | Out-Null
+        Start-ScheduledTask `
+            -TaskName "{task_name}"
+        '''
+        try:
+            result = self.session.run_ps(reg_cmd)
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="ignore").strip()
+                return False, (f"Failed starting Firmware task: {error}")
+
+            start_time = time.time()
+            state = None
+            last_result = None
+            while time.time() - start_time < timeout:
+                time.sleep(0.5)
+                check_cmd = f"""
+                $task = Get-ScheduledTask `
+                    -TaskName '{task_name}' `
+                    -ErrorAction SilentlyContinue
+                if ($task)
+                {{
+                    $info = Get-ScheduledTaskInfo `
+                        -TaskName '{task_name}'
+            
+                    Write-Output "STATE=$($task.State)"
+                    Write-Output "RESULT=$($info.LastTaskResult)"
+                }}
+                """
+                check = self.session.run_ps(check_cmd)
+                check_output = check.std_out.decode(errors="ignore").strip()
+                for line in check_output.splitlines():
+                    if line.startswith("STATE="):
+                        state = line.split("=", 1)[1].strip()
+                    elif line.startswith("RESULT="):
+
+                        try:
+                            last_result = int(line.split("=", 1)[1].strip())
+                        except ValueError:
+                            pass
+
+                if state == "Ready":
+                    break
+
+            log_result = self.session.run_ps(f"Get-Content '{remote_log}' " f"-ErrorAction SilentlyContinue")
+            log_output = log_result.std_out.decode(errors="ignore").strip()
+
+            if log_output:
+                print(" > E5061 Firmware:")
+                print(log_output)
+            if state != "Ready":
+                return False, "Firmware task timeout."
+            if last_result == 0:
+                return True, "Firmware Revision opened."
+            if last_result == 12:
+                return False, "E5061 main window not found."
+            if last_result == 13:
+                return False, "Could not activate E5061 window."
+            if last_result == 20:
+                return False, "Failed opening Firmware Revision."
+            return False, (f"Firmware task failed. " f"LastTaskResult={last_result}")
+
+        finally:
+            self.session.run_ps(
+                f"Unregister-ScheduledTask "
+                f"-TaskName '{task_name}' "
+                f"-Confirm:$false "
+                f"-ErrorAction SilentlyContinue"
+            )
+
+            self.session.run_ps(
+                f"Remove-Item '{remote_script}' "
+                f"-Force -ErrorAction SilentlyContinue"
+            )
+
+    def close_firmware_revision(self, timeout=10):
+        if not self.session:
+            self.connect()
+        result = self.session.run_cmd("quser")
+        output = result.std_out.decode(errors="ignore").strip()
+        username = None
+
+        for line in output.splitlines():
+            if "Active" in line:
+                parts = line.replace(">", "").split()
+                if parts:
+                    username = parts[0]
+                    break
+        if not username:
+            return False, "No active interactive user found."
+
+        host_result = self.session.run_cmd("hostname")
+        hostname = host_result.std_out.decode(errors="ignore").strip()
+        current_user = f"{hostname}\\{username}"
+        print(f" > Interactive user: {current_user}")
+        print(" > Closing E5061B Firmware Revision...")
+        task_name = f"E5061_CloseFirmware_{int(time.time())}"
+        remote_script = r"C:\Windows\Temp\E5061_Close_Firmware.ps1"
+        remote_b64 = r"C:\Windows\Temp\E5061_Close_Firmware.b64"
+        remote_log = r"C:\Windows\Temp\E5061_Close_Firmware.txt"
+
+        inner_ps = r'''
+        $log = "C:\Windows\Temp\E5061_Close_Firmware.txt"  
+        "=== CLOSE E5061 FIRMWARE ===" |
+            Out-File $log -Force
+        try
+        {
+            $p =
+                Get-Process E5061 -ErrorAction Stop |
+                Select-Object -First 1
+            $targetPid = $p.Id
+            "E5061 PID=$targetPid" |
+                Out-File $log -Append
+            $code = '
+        [DllImport("user32.dll")]
+        public static extern bool EnumWindows(
+            EnumWindowsProc callback,
+            IntPtr lParam); 
+        [DllImport("user32.dll")]
+        public static extern bool EnumChildWindows(
+            IntPtr hWndParent,
+            EnumWindowsProc callback,
+            IntPtr lParam);  
+        public delegate bool EnumWindowsProc(
+            IntPtr hWnd,
+            IntPtr lParam);
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(
+            IntPtr hWnd,
+            out uint processId);
+        [DllImport("user32.dll")]
+        public static extern int GetWindowText(
+            IntPtr hWnd,
+            System.Text.StringBuilder lpString,
+            int nMaxCount); 
+        [DllImport("user32.dll")]
+        public static extern int GetClassName(
+            IntPtr hWnd,
+            System.Text.StringBuilder lpClassName,
+            int nMaxCount);  
+        [DllImport("user32.dll")]
+        public static extern int GetDlgCtrlID(
+            IntPtr hWnd); 
+        [DllImport("user32.dll")]
+        public static extern IntPtr SendMessage(
+            IntPtr hWnd,
+            uint Msg,
+            IntPtr wParam,
+            IntPtr lParam);
+        ' 
+            Add-Type `
+                -MemberDefinition $code `
+                -Name Win32 `
+                -Namespace E5061Close
+    
+            $script:aboutHwnd = [IntPtr]::Zero
+            $callback = {
+                param(
+                    $hwnd,
+                    $lparam
+                )
+                [uint32]$pidValue = 0
+                [void][E5061Close.Win32]::GetWindowThreadProcessId(
+                    $hwnd,
+                    [ref]$pidValue
+                )
+                if ($pidValue -eq $targetPid)
+                {
+                    $title =
+                        New-Object System.Text.StringBuilder 256
+                    $class =
+                        New-Object System.Text.StringBuilder 256
+                    [void][E5061Close.Win32]::GetWindowText(
+                        $hwnd,
+                        $title,
+                        256
+                    )
+                    [void][E5061Close.Win32]::GetClassName(
+                        $hwnd,
+                        $class,
+                        256
+                    )
+                    if (
+                        $title.ToString() -eq "About E5061B" -and
+                        $class.ToString() -eq "#32770"
+                    )
+                    {
+                        $script:aboutHwnd = $hwnd
+    
+                        return $false
+                    }
+                }
+                return $true
+            }
+            $delegate =
+                [E5061Close.Win32+EnumWindowsProc]$callback
+            [void][E5061Close.Win32]::EnumWindows(
+                $delegate,
+                [IntPtr]::Zero
+            )
+            if ($script:aboutHwnd -eq [IntPtr]::Zero)
+            {
+                "ERROR: About E5061B not found" |
+                    Out-File $log -Append
+                exit 12
+            }
+            "About HWND=$($script:aboutHwnd)" |
+                Out-File $log -Append
+            $script:closeHwnd = [IntPtr]::Zero
+            $childCallback = { 
+                param(
+                    $hwnd,
+                    $lparam
+                )
+                $class =
+                    New-Object System.Text.StringBuilder 256
+                $title =
+                    New-Object System.Text.StringBuilder 256 
+                [void][E5061Close.Win32]::GetClassName(
+                    $hwnd,
+                    $class,
+                    256
+                )
+                [void][E5061Close.Win32]::GetWindowText(
+                    $hwnd,
+                    $title,
+                    256
+                )
+                $id =
+                    [E5061Close.Win32]::GetDlgCtrlID(
+                        $hwnd
+                    )
+                if (
+                    $class.ToString() -eq "Button" -and
+                    $title.ToString() -eq "Close" -and
+                    $id -eq 1151
+                )
+                {
+                    $script:closeHwnd = $hwnd
+    
+                    return $false
+                }
+                return $true
+            }
+            $childDelegate =
+                [E5061Close.Win32+EnumWindowsProc]$childCallback
+            [void][E5061Close.Win32]::EnumChildWindows(
+                $script:aboutHwnd,
+                $childDelegate,
+                [IntPtr]::Zero
+            )
+            if ($script:closeHwnd -eq [IntPtr]::Zero)
+            {
+                "ERROR: Close button not found" |
+                    Out-File $log -Append
+    
+                exit 13
+            }
+            "Close HWND=$($script:closeHwnd)" |
+                Out-File $log -Append
+            [void][E5061Close.Win32]::SendMessage(
+                $script:closeHwnd,
+                0x00F5,
+                [IntPtr]::Zero,
+                [IntPtr]::Zero
+            )
+            "BM_CLICK sent" |
+                Out-File $log -Append
+            Start-Sleep -Milliseconds 1000
+            $script:stillOpen = $false
+            $verifyCallback = {  
+                param(
+                    $hwnd,
+                    $lparam
+                )
+                [uint32]$pidValue = 0
+                [void][E5061Close.Win32]::GetWindowThreadProcessId(
+                    $hwnd,
+                    [ref]$pidValue
+                )
+                if ($pidValue -eq $targetPid)
+                {
+                    $title =
+                        New-Object System.Text.StringBuilder 256
+                    [void][E5061Close.Win32]::GetWindowText(
+                        $hwnd,
+                        $title,
+                        256
+                    )
+                    if ($title.ToString() -eq "About E5061B")
+                    {
+                        $script:stillOpen = $true
+                        return $false
+                    }
+                }
+                return $true
+            }
+            $verifyDelegate =
+                [E5061Close.Win32+EnumWindowsProc]$verifyCallback
+            [void][E5061Close.Win32]::EnumWindows(
+                $verifyDelegate,
+                [IntPtr]::Zero
+            )
+            if ($script:stillOpen)
+            {
+                "ERROR: About window still open" |
+                    Out-File $log -Append
+                exit 14
+            }
+            "SUCCESS: Firmware Revision closed" |
+                Out-File $log -Append
+            exit 0
+        }
+        catch
+        {
+            "ERROR: $($_.Exception.Message)" |
+                Out-File $log -Append 
+            exit 20
+        }
+        '''
+        encoded_script = base64.b64encode(inner_ps.encode("utf-8")).decode("ascii")
+        for remote_file in (remote_script, remote_b64, remote_log):
+            self.session.run_ps(
+                f"Remove-Item '{remote_file}' "
+                f"-Force -ErrorAction SilentlyContinue"
+            )
+        chunk_size = 500
+        for i in range(0, len(encoded_script), chunk_size):
+            chunk = encoded_script[i:i + chunk_size]
+            result = self.session.run_ps(
+                f"[IO.File]::AppendAllText("
+                f"'{remote_b64}',"
+                f"'{chunk}')"
+            )
+
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="ignore").strip()
+                return False, (f"Script transfer failed: {error}")
+        result = self.session.run_ps(
+            f"$b=[IO.File]::ReadAllText('{remote_b64}');"
+            f"$d=[Convert]::FromBase64String($b);"
+            f"[IO.File]::WriteAllBytes("
+            f"'{remote_script}',$d)"
+        )
+
+        if result.status_code != 0:
+            return False, "Could not create close script."
+
+        reg_cmd = f'''
+        $user = "{current_user}"
+        $action = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File {remote_script}"
+        $principal = New-ScheduledTaskPrincipal `
+            -UserId $user `
+            -LogonType Interactive `
+            -RunLevel Highest
+        $task = New-ScheduledTask `
+            -Action $action `
+            -Principal $principal
+        Register-ScheduledTask `
+            -TaskName "{task_name}" `
+            -InputObject $task `
+            -Force | Out-Null
+        Start-ScheduledTask `
+            -TaskName "{task_name}"
+        '''
+        try:
+            result = self.session.run_ps(reg_cmd)
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="ignore").strip()
+                return False, (f"Failed starting close task: {error}")
+            start_time = time.time()
+            state = None
+            last_result = None
+            while time.time() - start_time < timeout:
+                time.sleep(0.5)
+                check = self.session.run_ps(
+                    f"""
+                    $task = Get-ScheduledTask `
+                        -TaskName '{task_name}' `
+                        -ErrorAction SilentlyContinue
+                    if ($task)
+                    {{
+                        $info = Get-ScheduledTaskInfo `
+                            -TaskName '{task_name}'
+                        Write-Output "STATE=$($task.State)"
+                        Write-Output "RESULT=$($info.LastTaskResult)"
+                    }}
+                    """
+                )
+                check_output = check.std_out.decode(errors="ignore").strip()
+                for line in check_output.splitlines():
+                    if line.startswith("STATE="):
+                        state = line.split("=", 1)[1].strip()
+                    elif line.startswith("RESULT="):
+                        try:
+                            last_result = int(line.split("=", 1)[1].strip())
+                        except ValueError:
+                            pass
+                if state == "Ready":
+                    break
+
+            log_result = self.session.run_ps(
+                f"Get-Content '{remote_log}' "
+                f"-ErrorAction SilentlyContinue"
+            )
+            log_output = log_result.std_out.decode(errors="ignore").strip()
+            print()
+            print(" > E5061 Close Firmware:")
+            print("----------------------------------------")
+            print(log_output)
+            print("----------------------------------------")
+            print(f" > LastTaskResult: {last_result}")
+            if state != "Ready":
+                return False, "Close Firmware task timeout."
+            if last_result == 0:
+                return True, "Firmware Revision closed."
+            if last_result == 12:
+                return False, "About E5061B window not found."
+            if last_result == 13:
+                return False, "Close button not found."
+            if last_result == 14:
+                return False, "Close button clicked but window is still open."
+            return False, (
+                f"Close Firmware failed. "
+                f"LastTaskResult={last_result}"
+            )
+        finally:
+            self.session.run_ps(
+                f"Unregister-ScheduledTask "
+                f"-TaskName '{task_name}' "
+                f"-Confirm:$false "
+                f"-ErrorAction SilentlyContinue"
+            )
+            self.session.run_ps(
+                f"Remove-Item '{remote_script}' "
+                f"-Force -ErrorAction SilentlyContinue"
+            )
+
+    def open_windows_system(self, timeout=10):
+        if not self.session:
+            self.connect()
+
+        result = self.session.run_cmd("quser")
+        output = result.std_out.decode(errors="ignore").strip()
+        username = None
+        for line in output.splitlines():
+            if "Active" in line:
+                parts = line.replace(">", "").split()
+                if parts:
+                    username = parts[0]
+                    break
+        if not username:
+            return False, "No active interactive user found."
+
+        host_result = self.session.run_cmd("hostname")
+        hostname = host_result.std_out.decode(errors="ignore").strip()
+        current_user = f"{hostname}\\{username}"
+        print(f" > Interactive user: {current_user}")
+        print(" > Opening Windows System...")
+        task_name = f"E5061_WindowsSystem_{int(time.time())}"
+        remote_script = r"C:\Windows\Temp\E5061_Open_System.ps1"
+        remote_b64 = r"C:\Windows\Temp\E5061_Open_System.b64"
+        remote_log = r"C:\Windows\Temp\E5061_Open_System.txt"
+
+        inner_ps = r'''
+        $log = "C:\Windows\Temp\E5061_Open_System.txt"  
+        "=== OPEN WINDOWS SYSTEM ===" |
+            Out-File $log -Force 
+        try
+        {
+            Start-Process "control.exe" `
+                -ArgumentList "/name Microsoft.System"
+            "System command sent" |
+                Out-File $log -Append
+            # Give Control Panel time to open
+            Start-Sleep -Seconds 2
+            $code = '
+        [DllImport("user32.dll")]
+        public static extern bool EnumWindows(
+            EnumWindowsProc callback,
+            IntPtr lParam);
+        public delegate bool EnumWindowsProc(
+            IntPtr hWnd,
+            IntPtr lParam);
+        [DllImport("user32.dll")]
+        public static extern int GetWindowText(
+            IntPtr hWnd,
+            System.Text.StringBuilder lpString,
+            int nMaxCount);
+        [DllImport("user32.dll")]
+        public static extern int GetClassName(
+            IntPtr hWnd,
+            System.Text.StringBuilder lpClassName,
+            int nMaxCount);
+        [DllImport("user32.dll")]
+        public static extern bool IsWindowVisible(
+            IntPtr hWnd); 
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(
+            IntPtr hWnd,
+            int nCmdShow); 
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(
+            IntPtr hWnd);
+        '
+            Add-Type `
+                -MemberDefinition $code `
+                -Name Win32 `
+                -Namespace E5061System
+            $script:systemHwnd = [IntPtr]::Zero
+            $callback = {  
+                param(
+                    $hwnd,
+                    $lparam
+                )
+                if (
+                    -not [E5061System.Win32]::IsWindowVisible(
+                        $hwnd
+                    )
+                )
+                {
+                    return $true
+                }
+                $title =
+                    New-Object System.Text.StringBuilder 512
+    
+                $class =
+                    New-Object System.Text.StringBuilder 256
+                [void][E5061System.Win32]::GetWindowText(
+                    $hwnd,
+                    $title,
+                    512
+                )
+                [void][E5061System.Win32]::GetClassName(
+                    $hwnd,
+                    $class,
+                    256
+                )  
+                $windowTitle = $title.ToString()
+                $className = $class.ToString()  
+                if ($windowTitle)
+                {
+                    "HWND=$hwnd CLASS=$className TITLE=[$windowTitle]" |
+                        Out-File $log -Append
+                }  
+                # Windows 7 / Embedded System window
+                if (
+                    $windowTitle -eq "System"
+                )
+                {
+                    $script:systemHwnd = $hwnd  
+                    return $false
+                }
+                return $true
+            }
+            $delegate =
+                [E5061System.Win32+EnumWindowsProc]$callback
+            for ($try = 1; $try -le 10; $try++)
+            {
+                $script:systemHwnd = [IntPtr]::Zero
+                [void][E5061System.Win32]::EnumWindows(
+                    $delegate,
+                    [IntPtr]::Zero
+                ) 
+                if (
+                    $script:systemHwnd -ne [IntPtr]::Zero
+                )
+                {
+                    break
+                }
+                Start-Sleep -Milliseconds 500
+            }
+            if (
+                $script:systemHwnd -eq [IntPtr]::Zero
+            )
+            {
+                "ERROR: System window not found" |
+                    Out-File $log -Append
+                exit 12
+            }
+            "System HWND=$($script:systemHwnd)" |
+                Out-File $log -Append
+            [void][E5061System.Win32]::ShowWindow(
+                $script:systemHwnd,
+                3
+            )
+            "System MAXIMIZED" |
+                Out-File $log -Append
+            Start-Sleep -Milliseconds 500
+            [void][E5061System.Win32]::SetForegroundWindow(
+                $script:systemHwnd
+            )
+            Start-Sleep -Seconds 1
+            "SUCCESS: Windows System opened and maximized" |
+                Out-File $log -Append
+            exit 0
+        }
+        catch
+        {
+            "ERROR: $($_.Exception.Message)" |
+                Out-File $log -Append
+            exit 20
+        }
+        '''
+        encoded_script = base64.b64encode(inner_ps.encode("utf-8")).decode("ascii")
+        for remote_file in (remote_script, remote_b64, remote_log):
+            self.session.run_ps(
+                f"Remove-Item '{remote_file}' "
+                f"-Force -ErrorAction SilentlyContinue"
+            )
+
+        chunk_size = 500
+        for i in range(0, len(encoded_script), chunk_size):
+            chunk = encoded_script[i:i + chunk_size]
+            result = self.session.run_ps(
+                f"[IO.File]::AppendAllText("
+                f"'{remote_b64}',"
+                f"'{chunk}')"
+            )
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="ignore").strip()
+                return False, (f"Script transfer failed: {error}")
+
+        convert_cmd = (
+            f"$b=[IO.File]::ReadAllText('{remote_b64}');"
+            f"$d=[Convert]::FromBase64String($b);"
+            f"[IO.File]::WriteAllBytes('{remote_script}',$d)"
+        )
+        result = self.session.run_ps(convert_cmd)
+        if result.status_code != 0:
+            error = result.std_err.decode(errors="ignore").strip()
+            return False, (f"Failed creating System script: {error}")
+        self.session.run_ps(
+            f"Remove-Item '{remote_b64}' "
+            f"-Force -ErrorAction SilentlyContinue"
+        )
+        reg_cmd = f'''
+        $user = "{current_user}"
+        $action = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File {remote_script}"  
+        $principal = New-ScheduledTaskPrincipal `
+            -UserId $user `
+            -LogonType Interactive `
+            -RunLevel Highest
+        $task = New-ScheduledTask `
+            -Action $action `
+            -Principal $principal
+        Register-ScheduledTask `
+            -TaskName "{task_name}" `
+            -InputObject $task `
+            -Force | Out-Null
+        Start-ScheduledTask `
+            -TaskName "{task_name}"
+        '''
+        try:
+            result = self.session.run_ps(reg_cmd)
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="ignore").strip()
+                return False, (f"Failed starting System task: {error}")
+            start_time = time.time()
+            state = None
+            last_result = None
+            while time.time() - start_time < timeout:
+                time.sleep(0.5)
+                check = self.session.run_ps(
+                    f"""
+                    $task = Get-ScheduledTask `
+                        -TaskName '{task_name}' `
+                        -ErrorAction SilentlyContinue         
+                    if ($task)
+                    {{
+                        $info = Get-ScheduledTaskInfo `
+                            -TaskName '{task_name}'            
+                        Write-Output "STATE=$($task.State)"
+                        Write-Output "RESULT=$($info.LastTaskResult)"
+                    }}
+                    """
+                )
+                check_output = check.std_out.decode(errors="ignore").strip()
+                for line in check_output.splitlines():
+                    if line.startswith("STATE="):
+                        state = line.split("=", 1)[1].strip()
+                    elif line.startswith("RESULT="):
+                        try:
+                            last_result = int(line.split("=", 1)[1].strip())
+                        except ValueError:
+                            pass
+                if state == "Ready":
+                    break
+            log_result = self.session.run_ps(
+                f"Get-Content '{remote_log}' "
+                f"-ErrorAction SilentlyContinue"
+            )
+            log_output = log_result.std_out.decode(errors="ignore").strip()
+            print()
+            print(" > Windows System Log:")
+            print("----------------------------------------")
+            print(log_output)
+            print("----------------------------------------")
+            print(f" > LastTaskResult: {last_result}")
+
+            if state != "Ready":
+                return False, "Windows System task timeout."
+            if last_result == 0:
+                return True, ("Windows System opened and maximized.")
+            if last_result == 12:
+                return False, ("Windows System opened but window was not found.")
+            if last_result == 20:
+                return False, ("PowerShell error while opening Windows System.")
+            return False, (
+                f"Windows System task failed. "
+                f"LastTaskResult={last_result}"
+            )
+
+        finally:
+            self.session.run_ps(
+                f"Unregister-ScheduledTask "
+                f"-TaskName '{task_name}' "
+                f"-Confirm:$false "
+                f"-ErrorAction SilentlyContinue"
+            )
+            self.session.run_ps(
+                f"Remove-Item '{remote_script}' "
+                f"-Force -ErrorAction SilentlyContinue"
+            )
+
+    def open_system_information(self):
+        if not self.session:
+            self.connect()
+
+        result = self.session.run_cmd("quser")
+        output = result.std_out.decode(errors="ignore").strip()
+        username = None
+        for line in output.splitlines():
+            if "Active" in line:
+                parts = line.replace(">", "").split()
+                if parts:
+                    username = parts[0]
+                    break
+        if not username:
+            return False, "No active interactive user found."
+        host_result = self.session.run_cmd("hostname")
+        hostname = host_result.std_out.decode(errors="ignore").strip()
+        current_user = f"{hostname}\\{username}"
+        print(f" > Interactive user: {current_user}")
+        print(" > Opening System Information...")
+        task_name = f"E5061_MSInfo_{int(time.time())}"
+        inner_ps = (
+            "Start-Process "
+            "'C:\\Windows\\System32\\msinfo32.exe' "
+            "-WindowStyle Maximized"
+        )
+        encoded_payload = base64.b64encode(inner_ps.encode("utf-16-le")).decode("utf-8")
+        reg_cmd = f'''
+        $user = "{current_user}"
+        $action = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded_payload}"
+        $principal = New-ScheduledTaskPrincipal `
+            -UserId $user `
+            -LogonType Interactive `
+            -RunLevel Highest
+        $task = New-ScheduledTask `
+            -Action $action `
+            -Principal $principal
+        Register-ScheduledTask `
+            -TaskName "{task_name}" `
+            -InputObject $task `
+            -Force | Out-Null
+        Start-ScheduledTask `
+            -TaskName "{task_name}"
+        '''
+        result = self.session.run_ps(reg_cmd)
+        if result.status_code != 0:
+            error = result.std_err.decode(errors="ignore").strip()
+            print(f" > Error: {error}")
+            return False, error
+
+        time.sleep(4)
+
+        self.session.run_ps(
+            f"Unregister-ScheduledTask "
+            f"-TaskName '{task_name}' "
+            f"-Confirm:$false "
+            f"-ErrorAction SilentlyContinue"
+        )
+
+        return True, "System Information opened."
+
+    def maximize_system_information(self, timeout=10):
+        if not self.session:
+            self.connect()
+
+        result = self.session.run_cmd("quser")
+        output = result.std_out.decode(errors="ignore").strip()
+        username = None
+        for line in output.splitlines():
+            if "Active" in line:
+                parts = line.replace(">", "").split()
+                if parts:
+                    username = parts[0]
+                    break
+        if not username:
+            return False, "No active interactive user found."
+
+        host_result = self.session.run_cmd("hostname")
+        hostname = host_result.std_out.decode(errors="ignore").strip()
+        current_user = f"{hostname}\\{username}"
+        print(f" > Interactive user: {current_user}")
+        print(" > Resizing System Information to full screen...")
+        task_name = f"E5061_ResizeMSInfo_{int(time.time())}"
+        remote_script = r"C:\Windows\Temp\E5061_Resize_MSInfo.ps1"
+        remote_b64 = r"C:\Windows\Temp\E5061_Resize_MSInfo.b64"
+        remote_log = r"C:\Windows\Temp\E5061_Resize_MSInfo.txt"
+
+        inner_ps = r'''
+        $log = "C:\Windows\Temp\E5061_Resize_MSInfo.txt"
+        "=== RESIZE SYSTEM INFORMATION ===" |
+            Out-File $log -Force
+        try
+        {
+            $p =
+                Get-Process msinfo32 `
+                -ErrorAction Stop |
+                Select-Object -First 1 
+            $targetPid = $p.Id    
+            "PID=$targetPid" |
+                Out-File $log -Append
+            $code = '
+        [DllImport("user32.dll")]
+        public static extern bool EnumWindows(
+            EnumWindowsProc callback,
+            IntPtr lParam);  
+        public delegate bool EnumWindowsProc(
+            IntPtr hWnd,
+            IntPtr lParam);  
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(
+            IntPtr hWnd,
+            out uint processId);   
+        [DllImport("user32.dll")]
+        public static extern int GetWindowText(
+            IntPtr hWnd,
+            System.Text.StringBuilder text,
+            int count); 
+        [DllImport("user32.dll")]
+        public static extern int GetClassName(
+            IntPtr hWnd,
+            System.Text.StringBuilder text,
+            int count);  
+        [DllImport("user32.dll")]
+        public static extern bool IsWindowVisible(
+            IntPtr hWnd); 
+        [DllImport("user32.dll")]
+        public static extern bool SetWindowPos(
+            IntPtr hWnd,
+            IntPtr hWndInsertAfter,
+            int X,
+            int Y,
+            int cx,
+            int cy,
+            uint uFlags);
+        [DllImport("user32.dll")]
+        public static extern bool GetWindowRect(
+            IntPtr hWnd,
+            out RECT rect);  
+        public struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+        ' 
+            Add-Type `
+                -MemberDefinition $code `
+                -Name Win32 `
+                -Namespace MSInfoResize
+    
+            $script:targetHwnd = [IntPtr]::Zero 
+            $callback = {  
+                param($hwnd, $lparam)   
+                [uint32]$pidValue = 0 
+                [void][MSInfoResize.Win32]::GetWindowThreadProcessId(
+                    $hwnd,
+                    [ref]$pidValue
+                ) 
+                if ($pidValue -ne $targetPid)
+                {
+                    return $true
+                } 
+                if (
+                    -not [MSInfoResize.Win32]::IsWindowVisible(
+                        $hwnd
+                    )
+                )
+                {
+                    return $true
+                }
+                $title =
+                    New-Object System.Text.StringBuilder 512 
+                $class =
+                    New-Object System.Text.StringBuilder 256
+                [void][MSInfoResize.Win32]::GetWindowText(
+                    $hwnd,
+                    $title,
+                    512
+                )  
+                [void][MSInfoResize.Win32]::GetClassName(
+                    $hwnd,
+                    $class,
+                    256
+                ) 
+                if (
+                    $title.ToString() -eq "System Information" -and
+                    $class.ToString() -eq "#32770"
+                )
+                {
+                    $script:targetHwnd = $hwnd 
+                    return $false
+                }
+                return $true
+            }
+    
+            $delegate =
+                [MSInfoResize.Win32+EnumWindowsProc]$callback
+            [void][MSInfoResize.Win32]::EnumWindows(
+                $delegate,
+                [IntPtr]::Zero
+            )
+
+            if ($script:targetHwnd -eq [IntPtr]::Zero)
+            {
+                "ERROR: System Information window not found" |
+                    Out-File $log -Append  
+                exit 12
+            }
+     
+            "HWND=$($script:targetHwnd)" |
+                Out-File $log -Append
+
+            Add-Type -AssemblyName System.Windows.Forms
+    
+            $screen =
+                [System.Windows.Forms.Screen]::FromHandle(
+                    $script:targetHwnd
+                )
+    
+            $area = $screen.WorkingArea  
+            "Screen X=$($area.X)" |
+                Out-File $log -Append  
+            "Screen Y=$($area.Y)" |
+                Out-File $log -Append  
+            "Screen Width=$($area.Width)" |
+                Out-File $log -Append
+            "Screen Height=$($area.Height)" |
+                Out-File $log -Append
+            $result =
+                [MSInfoResize.Win32]::SetWindowPos(
+                    $script:targetHwnd,
+                    [IntPtr]::Zero,
+                    $area.X,
+                    $area.Y,
+                    $area.Width,
+                    $area.Height,
+                    0x0040
+                )  
+            "SetWindowPos=$result" |
+                Out-File $log -Append
+
+            Start-Sleep -Seconds 1
+    
+            $rect =
+                New-Object MSInfoResize.Win32+RECT 
+            [void][MSInfoResize.Win32]::GetWindowRect(
+                $script:targetHwnd,
+                [ref]$rect
+            )  
+            $width =
+                $rect.Right - $rect.Left  
+            $height =
+                $rect.Bottom - $rect.Top 
+            "New Position=$($rect.Left),$($rect.Top)" |
+                Out-File $log -Append  
+            "New Size=${width}x${height}" |
+                Out-File $log -Append  
+            if (-not $result)
+            {
+                "ERROR: SetWindowPos failed" |
+                    Out-File $log -Append   
+                exit 13
+            }  
+            "SUCCESS: System Information resized" |
+                Out-File $log -Append   
+            exit 0
+        }
+        catch
+        {
+            "ERROR: $($_.Exception.Message)" |
+                Out-File $log -Append   
+            exit 20
+        }
+        '''
+
+        encoded_script = base64.b64encode(inner_ps.encode("utf-8")).decode("ascii")
+        for remote_file in (remote_script, remote_b64, remote_log):
+            self.session.run_ps(
+                f"Remove-Item '{remote_file}' "
+                f"-Force -ErrorAction SilentlyContinue"
+            )
+
+        chunk_size = 500
+        for i in range(0, len(encoded_script), chunk_size):
+            chunk = encoded_script[i:i + chunk_size]
+            result = self.session.run_ps(
+                f"[IO.File]::AppendAllText("
+                f"'{remote_b64}',"
+                f"'{chunk}')"
+            )
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="ignore").strip()
+
+                return False, (f"Script transfer failed: {error}")
+
+        result = self.session.run_ps(
+            f"$b=[IO.File]::ReadAllText('{remote_b64}');"
+            f"$d=[Convert]::FromBase64String($b);"
+            f"[IO.File]::WriteAllBytes("
+            f"'{remote_script}',$d)"
+        )
+        if result.status_code != 0:
+            return False, "Could not create resize script."
+
+        reg_cmd = f'''
+        $user = "{current_user}"
+        $action = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File {remote_script}"
+        $principal = New-ScheduledTaskPrincipal `
+            -UserId $user `
+            -LogonType Interactive `
+            -RunLevel Highest
+        $task = New-ScheduledTask `
+            -Action $action `
+            -Principal $principal
+        Register-ScheduledTask `
+            -TaskName "{task_name}" `
+            -InputObject $task `
+            -Force | Out-Null
+        Start-ScheduledTask `
+            -TaskName "{task_name}"
+        '''
+        try:
+            result = self.session.run_ps(reg_cmd)
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="ignore").strip()
+                return False, (f"Failed starting resize task: {error}")
+
+            start_time = time.time()
+            state = None
+            last_result = None
+            while time.time() - start_time < timeout:
+                time.sleep(0.5)
+                check = self.session.run_ps(
+                    f"""
+                    $task = Get-ScheduledTask `
+                        -TaskName '{task_name}' `
+                        -ErrorAction SilentlyContinue              
+                    if ($task)
+                    {{
+                        $info = Get-ScheduledTaskInfo `
+                            -TaskName '{task_name}'             
+                        Write-Output "STATE=$($task.State)"
+                        Write-Output "RESULT=$($info.LastTaskResult)"
+                    }}
+                    """
+                )
+
+                check_output = check.std_out.decode(errors="ignore").strip()
+                for line in check_output.splitlines():
+                    if line.startswith("STATE="):
+                        state = line.split("=", 1)[1].strip()
+                    elif line.startswith("RESULT="):
+                        try:
+                            last_result = int(line.split("=", 1)[1].strip())
+                        except ValueError:
+                            pass
+                if state == "Ready":
+                    break
+
+            log_result = self.session.run_ps(
+                f"Get-Content '{remote_log}' "
+                f"-ErrorAction SilentlyContinue"
+            )
+            log_output = log_result.std_out.decode(errors="ignore").strip()
+            print()
+            print(" > System Information Resize:")
+            print("----------------------------------------")
+            print(log_output)
+            print("----------------------------------------")
+            print(f" > LastTaskResult: {last_result}")
+
+            if state != "Ready":
+                return False, "Resize task timeout."
+            if last_result == 0:
+                return True, "System Information resized to full screen."
+            if last_result == 12:
+                return False, "System Information window not found."
+            if last_result == 13:
+                return False, "SetWindowPos failed."
+            return False, (f"Resize failed. LastTaskResult={last_result}")
+        finally:
+            self.session.run_ps(
+                f"Unregister-ScheduledTask "
+                f"-TaskName '{task_name}' "
+                f"-Confirm:$false "
+                f"-ErrorAction SilentlyContinue"
+            )
+            self.session.run_ps(
+                f"Remove-Item '{remote_script}' "
+                f"-Force -ErrorAction SilentlyContinue"
+            )
+
+    def prepare_system_information(self):
+        if not self.session:
+            self.connect()
+
+        result = self.session.run_cmd("quser")
+        output = result.std_out.decode(errors="ignore").strip()
+        username = None
+        for line in output.splitlines():
+            if "Active" in line:
+                parts = line.replace(">", "").split()
+                if parts:
+                    username = parts[0]
+                    break
+        if not username:
+            return False, "No active interactive user found."
+
+        host_result = self.session.run_cmd("hostname")
+        hostname = host_result.std_out.decode(errors="ignore").strip()
+        current_user = f"{hostname}\\{username}"
+        task_name = f"E5061_PrepareMSInfo_{int(time.time())}"
+
+        inner_ps = (
+            '$w = New-Object -ComObject WScript.Shell; '
+            '$ok = $w.AppActivate("System Information"); '
+            'if ($ok) { '
+            'Start-Sleep -Milliseconds 500; '
+            '$w.SendKeys("{TAB}"); '
+            'Start-Sleep -Milliseconds 500; '
+            'exit 0; '
+            '} else { '
+            'exit 12; '
+            '}'
+        )
+
+        encoded_payload = base64.b64encode(inner_ps.encode("utf-16-le")).decode("utf-8")
+
+        reg_cmd = f'''
+        $user = "{current_user}"
+        $action = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded_payload}"  
+        $principal = New-ScheduledTaskPrincipal `
+            -UserId $user `
+            -LogonType Interactive `
+            -RunLevel Highest
+        $task = New-ScheduledTask `
+            -Action $action `
+            -Principal $principal
+        Register-ScheduledTask `
+            -TaskName "{task_name}" `
+            -InputObject $task `
+            -Force | Out-Null
+        Start-ScheduledTask `
+            -TaskName "{task_name}"
+        '''
+
+        result = self.session.run_ps(reg_cmd)
+
+        if result.status_code != 0:
+            error = result.std_err.decode(errors="ignore").strip()
+            return False, error
+
+        time.sleep(2)
+
+        self.session.run_ps(
+            f"Unregister-ScheduledTask "
+            f"-TaskName '{task_name}' "
+            f"-Confirm:$false "
+            f"-ErrorAction SilentlyContinue"
+        )
+
+        return True, "TAB sent to System Information."
+
+    def get_installed_keysight_licenses(self):
+
+        if not self.session:
+            if not self.connect():
+                return []
+
+        ps = r"""
+        $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
+    
+        $config = 'C:\ProgramData\Keysight\Licensing\Configuration\Variables\CCL_LICENSES_DIRS.config'
+        $xmlPath = 'C:\Program Files (x86)\Agilent\ACCL\Licensing\bin\LicenseMetadata_VNA.xml'
+    
+        $features = @{}
+        if (-not (Test-Path -LiteralPath $config)) {
+            throw "License directory configuration not found"
+        } 
+        $dirs = @(
+            Get-Content -LiteralPath $config |
+                Where-Object {
+                    $_.Trim() -and -not $_.Trim().StartsWith('#')
+                }
+        ) 
+        foreach ($dir in $dirs) {
+            $dir = $dir.Trim()
+            if (-not (Test-Path -LiteralPath $dir)) {
+                continue
+            }
+            Get-ChildItem -LiteralPath $dir -Filter '*.lic' -File `
+                -Recurse -Force -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    $file = $_
+                    Get-Content -LiteralPath $file.FullName -ErrorAction Stop |
+                        ForEach-Object {
+    
+                            if ($_ -match '^\s*(FEATURE|INCREMENT)\s+(\S+)') {
+    
+                                $feature = $matches[2]
+    
+                                if (-not $features.ContainsKey($feature)) {
+                                    $features[$feature] = ''
+                                }
+                            }
+                        }
+                }
+        }  
+        if (Test-Path -LiteralPath $xmlPath) {
+    
+            [xml]$xml = Get-Content -LiteralPath $xmlPath
+    
+            $nodes = $xml.SelectNodes('//*')
+            foreach ($node in $nodes) {
+                if ($node.LocalName -notin @('SWLicenseInfo', 'HWLicenseInfo')) {
+                    continue
+                }
+                $nameNode = $node.SelectSingleNode(
+                    './*[local-name()="SW_ID-FeatureName" or local-name()="HW_ID-FeatureName"]'
+                )
+                $descNode = $node.SelectSingleNode(
+                    './*[local-name()="SW_Description" or local-name()="HW_Description"]'
+                )
+    
+                if ($null -eq $nameNode) {
+                    continue
+                }
+                $feature = $nameNode.InnerText.Trim()
+    
+                if (
+                    $features.ContainsKey($feature) -and
+                    $null -ne $descNode
+                ) {
+                    $features[$feature] = $descNode.InnerText.Trim()
+                }
+            }
+        }
+            $rows = @(
+            foreach ($feature in ($features.Keys | Sort-Object)) {
+    
+                [PSCustomObject]@{
+                    Feature = $feature
+                    Description = $features[$feature]
+                }
+            }
+        )
+        ConvertTo-Json -InputObject $rows -Depth 3 -Compress
+        """
+
+        try:
+            result = self.session.run_ps(ps)
+            output = result.std_out.decode("utf-8", errors="replace").strip()
+            errors = result.std_err.decode("utf-8", errors="replace").strip()
+
+            if result.status_code != 0:
+                print("ERROR:", errors)
+                return []
+            if not output:
+                return []
+            licenses = json.loads(output)
+
+            if isinstance(licenses, dict):
+                licenses = [licenses]
+
+            for lic in licenses:
+                print(
+                    f"{lic['Feature']:<20} | "
+                    f"{lic['Description']}"
+                )
+
+            return [
+                [lic["Feature"], lic["Description"]]
+                for lic in licenses
+            ]
+
+        except Exception as e:
+            print(f"License extraction error: {e}")
+            return []
+
+    def e508x_license_full_query(self, licenses):
+        results_list = []
+
+        try:
+            print("\n===== LICENSE FULL QUERY =====")
+            print("Received licenses:", licenses)
+
+            headers = [
+                "Feature",
+                "Description"
+            ]
+
+            license_table = create_data_table(
+                title="Keysight License Manager",
+                headers=[
+                    f"{headers[0]:^22}",
+                    f"{headers[1]:^80}"
+                ]
+            )
+
+            for feature, description in licenses:
+                license_table["rows"].append([
+                    feature,
+                    description
+                ])
+
+            print("Table type:", license_table.get("type"))
+            print("Table title:", license_table.get("title"))
+            print("Table rows:", len(license_table["rows"]))
+
+            results_list.append(license_table)
+
+            return results_list
+
+        except Exception as error:
+            print(
+                f"License information error: "
+                f"{type(error).__name__}: {error}"
+            )
+
+            if self.logger:
+                self.logger.exception("Failed reading license information")
+
+            return results_list
+
+    def open_e508x_firmware_revision(self, timeout=30):
+        if not self.session:
+            self.connect()
+
+        result = self.session.run_cmd("quser")
+        output = result.std_out.decode(errors="replace")
+        username = None
+        for line in output.splitlines():
+            if "Active" in line:
+                parts = line.replace(">", "").split()
+                if parts:
+                    username = parts[0]
+                    break
+
+        if not username:
+            return False, "No active interactive user found."
+
+        host_result = self.session.run_cmd("hostname")
+        hostname = host_result.std_out.decode(errors="replace").strip()
+        current_user = f"{hostname}\\{username}"
+        print(f" > Interactive user: {current_user}")
+        unique_id = uuid.uuid4().hex[:8]
+        task_name = f"E508x_About_{unique_id}"
+        script_path = rf"C:\Windows\Temp\E508x_About_{unique_id}.ps1"
+        b64_path = rf"C:\Windows\Temp\E508x_About_{unique_id}.b64"
+        log_path = rf"C:\Windows\Temp\E508x_About_{unique_id}.txt"
+        error_path = rf"C:\Windows\Temp\E508x_About_Error_{unique_id}.txt"
+
+        inner_ps = rf"""
+        $ErrorActionPreference = 'Stop'  
+        $log = '{log_path}'  
+        try {{ 
+            "SCRIPT_STARTED" | Set-Content -LiteralPath $log
+            # Find E5080B application
+            $p = Get-Process -Name '835x' -ErrorAction Stop |
+                 Where-Object {{ $_.MainWindowHandle -ne 0 }} |
+                 Select-Object -First 1
+            if (-not $p) {{
+                throw "E5080B application window not found"
+            }}  
+            $p.Refresh()   
+            $hwnd = $p.MainWindowHandle 
+            Add-Content -LiteralPath $log -Value "PID=$($p.Id)"
+            Add-Content -LiteralPath $log -Value "TITLE=$($p.MainWindowTitle)"
+            Add-Content -LiteralPath $log -Value "HWND=$hwnd"
+            Add-Content -LiteralPath $log -Value "SESSION=$($p.SessionId)"
+    
+            if ($hwnd -eq 0) {{
+                throw "Main window handle is zero"
+            }}   
+            # Activate ENA application
+            $wshell = New-Object -ComObject WScript.Shell 
+            $activated = $wshell.AppActivate($p.Id)
+            if (-not $activated) {{
+                throw "Could not activate ENA window"
+            }}
+    
+            Add-Content -LiteralPath $log -Value "WINDOW_ACTIVATED"  
+            Start-Sleep -Milliseconds 700
+    
+            # Close an existing menu, if any
+            $wshell.SendKeys("{{ESC}}")
+            Start-Sleep -Milliseconds 300
+    
+            # Open Help menu (Alt+H)       
+            $wshell.SendKeys("%h")
+            Start-Sleep -Milliseconds 700           
+            Add-Content -LiteralPath $log -Value "HELP_MENU_OPENED"
+            
+            # Select About NA (last item in Help menu)
+            $wshell.SendKeys("{{DOWN 5}}")
+            Start-Sleep -Milliseconds 500          
+            Add-Content -LiteralPath $log -Value "ABOUT_SELECTED"
+            
+            # Open About NA
+            $wshell.SendKeys("{{ENTER}}")
+            Start-Sleep -Milliseconds 1200
+    
+            Add-Content -LiteralPath $log -Value "RESULT=ABOUT_COMMAND_SENT" 
+            Add-Content -LiteralPath $log -Value "RESULT=ABOUT_COMMAND_SENT"
+            exit 0
+        }}
+        catch {{
+            $errorMessage = $_ | Out-String
+            try {{
+                [System.IO.File]::AppendAllText(
+                    $log,
+                    "`r`nERROR=" + $errorMessage
+                )
+            }}
+            catch {{}} 
+            exit 20
+        }}
+        """
+        encoded = base64.b64encode(inner_ps.encode("utf-8")).decode("ascii")
+        task_registered = False
+        try:
+            for path in (b64_path, script_path, log_path, error_path):
+                self.session.run_ps(
+                    f"Remove-Item -LiteralPath '{path}' "
+                    f"-Force -ErrorAction SilentlyContinue"
+                )
+
+            chunk_size = 500
+            for i in range(0, len(encoded), chunk_size):
+                chunk = encoded[i:i + chunk_size]
+                result = self.session.run_ps(f"[IO.File]::AppendAllText('{b64_path}', '{chunk}')")
+                if result.status_code != 0:
+                    error = result.std_err.decode(errors="replace")
+                    return False, f"Script transfer failed: {error}"
+
+            convert_cmd = (
+                f"$b=[IO.File]::ReadAllText('{b64_path}');"
+                f"$d=[Convert]::FromBase64String($b);"
+                f"[IO.File]::WriteAllBytes('{script_path}',$d)"
+            )
+
+            result = self.session.run_ps(convert_cmd)
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="replace")
+                return False, f"Script creation failed: {error}"
+
+            check_script = f"""
+            $errors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+                '{script_path}',
+                [ref]$tokens,
+                [ref]$errors
+            ) | Out-Null  
+            if ($errors.Count -gt 0) {{
+                $errors | ForEach-Object {{
+                    Write-Output "SYNTAX_ERROR: $($_.Message)"
+                    Write-Output "LINE: $($_.Extent.StartLineNumber)"
+                }}
+            }}
+            else {{
+                Write-Output "SYNTAX_OK"
+            }}
+            """
+            check_result = self.session.run_ps(check_script)
+            syntax_output = check_result.std_out.decode("utf-8", errors="replace").strip()
+            print("\n===== POWERSHELL SYNTAX CHECK =====")
+            print(syntax_output)
+            if (check_result.status_code != 0 or "SYNTAX_OK" not in syntax_output):
+                return False, (f"PowerShell syntax check failed:\n{syntax_output}")
+
+            reg_cmd = f"""
+            $ErrorActionPreference = 'Stop'     
+            $user = '{current_user}'     
+            $action = New-ScheduledTaskAction `
+                -Execute 'powershell.exe' `
+                -Argument '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "{script_path}" 2> "{error_path}"'       
+            $principal = New-ScheduledTaskPrincipal `
+                -UserId $user `
+                -LogonType Interactive `
+                -RunLevel Highest       
+            $task = New-ScheduledTask `
+                -Action $action `
+                -Principal $principal     
+            Register-ScheduledTask `
+                -TaskName '{task_name}' `
+                -InputObject $task `
+                -Force | Out-Null   
+            Start-ScheduledTask -TaskName '{task_name}'
+            """
+
+            result = self.session.run_ps(reg_cmd)
+            if result.status_code != 0:
+                error = result.std_err.decode(errors="replace")
+                return False, f"Scheduled Task failed: {error}"
+            task_registered = True
+
+            start_time = time.time()
+            state = None
+            last_result = None
+            log_output = ""
+            while time.time() - start_time < timeout:
+                time.sleep(0.5)
+                check_cmd = f"""
+                $task = Get-ScheduledTask `
+                    -TaskName '{task_name}' `
+                    -ErrorAction SilentlyContinue          
+                if ($task) {{
+                    $info = Get-ScheduledTaskInfo -TaskName '{task_name}'           
+                    Write-Output "STATE=$($task.State)"
+                    Write-Output "RESULT=$($info.LastTaskResult)"
+                }}
+                """
+                check = self.session.run_ps(check_cmd)
+                check_output = check.std_out.decode("utf-8", errors="replace").strip()
+                for line in check_output.splitlines():
+                    if line.startswith("STATE="):
+                        state = line.split("=", 1)[1].strip()
+                    elif line.startswith("RESULT="):
+                        try:
+                            last_result = int(line.split("=", 1)[1].strip())
+                        except ValueError:
+                            pass
+
+                log_result = self.session.run_ps(
+                    f"Get-Content -LiteralPath '{log_path}' "
+                    f"-ErrorAction SilentlyContinue"
+                )
+
+                log_output = log_result.std_out.decode("utf-8", errors="replace").strip()
+                if state == "Ready" and last_result is not None:
+                    break
+            print("\n===== E5080B ABOUT WINDOW =====")
+            print(f"STATE={state}")
+            print(f"LAST_RESULT={last_result}")
+
+            if log_output:
+                print("\n===== SCRIPT LOG =====")
+                print(log_output)
+
+            error_result = self.session.run_ps(
+                f"Get-Content -LiteralPath '{error_path}' "
+                f"-ErrorAction SilentlyContinue"
+            )
+
+            error_output = error_result.std_out.decode("utf-8", errors="replace").strip()
+            if error_output:
+                print("\n===== POWERSHELL ERROR LOG =====")
+                print(error_output)
+
+            if state != "Ready":
+                return False, (
+                    f"Task timeout. "
+                    f"State={state}, LastTaskResult={last_result}"
+                )
+
+            if last_result == 0 and "RESULT=ABOUT_COMMAND_SENT" in log_output:
+                return True, "Help -> About NA command sent successfully."
+
+            return False, (
+                f"About window task failed.\n"
+                f"LastTaskResult={last_result}\n"
+                f"LOG={log_output}\n"
+                f"ERROR={error_output}"
+            )
+
+        finally:
+
+            if task_registered:
+                self.session.run_ps(
+                    f"Unregister-ScheduledTask "
+                    f"-TaskName '{task_name}' "
+                    f"-Confirm:$false "
+                    f"-ErrorAction SilentlyContinue"
+                )
+
+            self.session.run_ps(
+                f"Remove-Item -LiteralPath '{script_path}','{b64_path}' "
+                f"-Force -ErrorAction SilentlyContinue"
+            )
+
+    def open_e508x_about_window(self, action="open", scroll_steps=2, timeout=30):
+
+        if not self.session:
+            self.connect()
+
+        if action not in ("open", "prepare_scroll", "scroll", "close"):
+            return False, f"Invalid action: {action}"
+
+        if action == "scroll":
+            if not isinstance(scroll_steps, int) or not 1 <= scroll_steps <= 20:
+                return False, "scroll_steps must be between 1 and 20"
+
+        result = self.session.run_cmd("quser")
+        output = result.std_out.decode(errors="replace")
+        username = None
+        for line in output.splitlines():
+            if "Active" in line:
+                parts = line.replace(">", "").split()
+                if parts:
+                    username = parts[0]
+                    break
+
+        if not username:
+            return False, "No active interactive user found"
+
+        result = self.session.run_cmd("hostname")
+        hostname = result.std_out.decode(errors="replace").strip()
+        current_user = f"{hostname}\\{username}"
+        print(f" > Interactive user: {current_user}")
+        print(f" > Action: {action}")
+        uid = uuid.uuid4().hex[:10]
+        task_name = f"E508xAbout_{uid}"
+        script_path = rf"C:\Windows\Temp\E508xAbout_{uid}.ps1"
+        b64_path = rf"C:\Windows\Temp\E508xAbout_{uid}.b64"
+        log_path = rf"C:\Windows\Temp\E508xAbout_{uid}.log"
+
+        cs_code = r"""
+            using System;
+            using System.Text;
+            using System.Collections.Generic;
+            using System.Runtime.InteropServices;
+            public class E508xWindowApi
+            {
+                public delegate bool EnumWindowsProc(
+                    IntPtr hWnd,
+                    IntPtr lParam
+                );
+                [DllImport("user32.dll")]
+                public static extern IntPtr GetForegroundWindow();      
+                [DllImport("user32.dll")]
+                public static extern bool SetForegroundWindow(IntPtr hWnd);        
+                [DllImport("user32.dll")]
+                public static extern bool IsWindow(IntPtr hWnd);      
+                [DllImport("user32.dll")]
+                public static extern bool IsWindowVisible(IntPtr hWnd);      
+                [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+                public static extern int GetWindowText(
+                    IntPtr hWnd,
+                    StringBuilder text,
+                    int count
+                );       
+                [DllImport("user32.dll")]
+                public static extern uint GetWindowThreadProcessId(
+                    IntPtr hWnd,
+                    out uint processId
+                );       
+                [DllImport("user32.dll")]
+                public static extern bool EnumWindows(
+                    EnumWindowsProc callback,
+                    IntPtr lParam
+                );     
+                public static string Title(IntPtr hWnd)
+                {
+                    StringBuilder sb = new StringBuilder(512);
+                    GetWindowText(hWnd, sb, sb.Capacity);
+                    return sb.ToString();
+                }     
+                public static List<IntPtr> WindowsForPid(uint targetPid)
+                {
+                    List<IntPtr> result = new List<IntPtr>();   
+                    EnumWindows(delegate(IntPtr hWnd, IntPtr unused)
+                    {
+                        uint pid;
+                        GetWindowThreadProcessId(hWnd, out pid);
+        
+                        if (pid == targetPid && IsWindowVisible(hWnd))
+                            result.Add(hWnd);   
+                        return true;
+                    }, IntPtr.Zero);    
+                    return result;
+                }
+            }
+            """
+
+        cs_b64 = base64.b64encode(cs_code.encode("utf-8")).decode("ascii")
+
+        helpers_ps = """
+            $cs = [Text.Encoding]::UTF8.GetString(
+                [Convert]::FromBase64String('__CS_BASE64__')
+            )
+            Add-Type -TypeDefinition $cs -ErrorAction Stop
+            function Write-Log {
+                param([string]$Message)
+                Add-Content -LiteralPath $log -Value $Message
+            }
+            function Get-ForegroundInfo {
+                $h = [E508xWindowApi]::GetForegroundWindow()
+                $title = [E508xWindowApi]::Title($h)
+                return "HWND=$h TITLE=$title"
+            }
+            function Get-VnaWindows {
+                $handles = [E508xWindowApi]::WindowsForPid(
+                    [uint32]$p.Id
+                )
+                $items = @()
+                foreach ($h in $handles) {
+                    $items += [PSCustomObject]@{
+                        Handle = $h
+                        Title = [E508xWindowApi]::Title($h)
+                    }
+                }
+                return $items
+            }
+            function Activate-Window {
+                param(
+                    [IntPtr]$Handle,
+                    [string]$ExpectedTitle = ""
+                )
+                if (-not [E508xWindowApi]::IsWindow($Handle)) {
+                    return $false
+                }
+                [void][E508xWindowApi]::SetForegroundWindow($Handle)
+                Start-Sleep -Milliseconds 350
+                $foreground = [E508xWindowApi]::GetForegroundWindow()
+                if ($foreground -eq $Handle) {
+                    return $true
+                }
+                if ($ExpectedTitle -ne "") {
+                    [void]$wshell.AppActivate($ExpectedTitle)
+                    Start-Sleep -Milliseconds 350
+                    $foreground = [E508xWindowApi]::GetForegroundWindow()
+                    if ($foreground -eq $Handle) {
+                        return $true
+                    }
+                }
+                return $false
+            }
+            """.replace("__CS_BASE64__", cs_b64)
+
+        if action == "open":
+            action_ps = r"""
+                Write-Log "OPEN_START"
+                if (-not $wshell.AppActivate($p.Id)) {
+                    throw "Could not activate ENA application"
+                }
+                Start-Sleep -Milliseconds 700
+                $wshell.SendKeys("{ESC}")
+                Start-Sleep -Milliseconds 300
+                $wshell.SendKeys("%h")
+                Start-Sleep -Milliseconds 600
+                $wshell.SendKeys("{DOWN 5}")
+                Start-Sleep -Milliseconds 400
+                $wshell.SendKeys("{ENTER}")
+                Start-Sleep -Milliseconds 1100
+                Write-Log "ABOUT_OPEN_COMMAND_SENT"
+                $aboutTitle = "About Network Analyzer"
+                if (-not $wshell.AppActivate($aboutTitle)) {
+                    throw "Could not activate About Network Analyzer"
+                }
+                Start-Sleep -Milliseconds 500
+                Write-Log "ABOUT_ACTIVATED"
+                $before = @(Get-VnaWindows)
+                foreach ($w in $before) {
+                    Write-Log "BEFORE_MORE HWND=$($w.Handle) TITLE=$($w.Title)"
+                }
+                $wshell.SendKeys("{ENTER}")
+                Start-Sleep -Milliseconds 1200
+                Write-Log "MORE_ENTER_SENT"
+                Write-Log ("FOREGROUND_AFTER_MORE=" + (Get-ForegroundInfo))
+                $after = @(Get-VnaWindows)
+                foreach ($w in $after) {
+                    Write-Log "AFTER_MORE HWND=$($w.Handle) TITLE=$($w.Title)"
+                }
+                Write-Log "RESULT=MORE_READY"
+                """
+        elif action == "prepare_scroll":
+            action_ps = r"""
+                Write-Log "PREPARE_SCROLL_START"
+                Write-Log ("FOREGROUND_BEFORE=" + (Get-ForegroundInfo))
+                $aboutTitle = "About Network Analyzer"
+                $windows = @(Get-VnaWindows)
+                foreach ($w in $windows) {
+                    Write-Log "VNA_WINDOW HWND=$($w.Handle) TITLE=$($w.Title)"
+                }
+                $aboutWindow = $windows |
+                    Where-Object { $_.Title -eq $aboutTitle } |
+                    Select-Object -First 1
+                if (-not $aboutWindow) {
+                    throw "About Network Analyzer window not found"
+                }
+                $foreground = [E508xWindowApi]::GetForegroundWindow()
+                $moreWindow = $windows |
+                    Where-Object {
+                        $_.Handle -eq $foreground -and
+                        $_.Handle -ne $aboutWindow.Handle -and
+                        $_.Handle -ne $p.MainWindowHandle
+                    } |
+                    Select-Object -First 1
+                if (-not $moreWindow) {
+                    $moreWindow = $windows |
+                        Where-Object {
+                            $_.Handle -ne $aboutWindow.Handle -and
+                            $_.Handle -ne $p.MainWindowHandle -and
+                            $_.Title -ne ""
+                        } |
+                        Select-Object -First 1
+                }
+                if (-not $moreWindow) {
+                    Write-Log "MORE_WINDOW_NOT_IDENTIFIED"
+                    throw "More window could not be identified safely"
+                }
+                Write-Log "MORE_CANDIDATE_HWND=$($moreWindow.Handle)"
+                Write-Log "MORE_CANDIDATE_TITLE=$($moreWindow.Title)"
+                $focused = Activate-Window -Handle $moreWindow.Handle `
+                                           -ExpectedTitle $moreWindow.Title
+            
+                Write-Log "MORE_FOCUS_RESULT=$focused"
+                Write-Log ("FOREGROUND_AFTER_MORE_FOCUS=" + (Get-ForegroundInfo))
+                if (-not $focused) {
+                    throw "Could not focus More window"
+                }
+                $wshell.SendKeys("{ESC}")
+                Start-Sleep -Milliseconds 900
+                Write-Log "MORE_ESC_SENT"
+                Write-Log ("FOREGROUND_AFTER_ESC=" + (Get-ForegroundInfo))
+                $stillOpen = [E508xWindowApi]::IsWindow(
+                    $moreWindow.Handle
+                )
+                Write-Log "MORE_EXISTS_AFTER_ESC=$stillOpen"
+                # Try ENTER if ESC did not close More
+                if ($stillOpen) {
+                    Write-Log "TRYING_ENTER_TO_CLOSE_MORE"
+                    $focused = Activate-Window -Handle $moreWindow.Handle `
+                                               -ExpectedTitle $moreWindow.Title
+                    if (-not $focused) {
+                        throw "More still exists and cannot be focused"
+                    }
+                    $wshell.SendKeys("{ENTER}")
+                    Start-Sleep -Milliseconds 900
+                    Write-Log "MORE_ENTER_SENT"
+                    $stillOpen = [E508xWindowApi]::IsWindow(
+                        $moreWindow.Handle
+                    )
+                    Write-Log "MORE_EXISTS_AFTER_ENTER=$stillOpen"
+                }
+                if ($stillOpen) {
+                    throw "More window is still open after ESC and ENTER"
+                }
+                Write-Log "MORE_CLOSED"
+                if (-not $wshell.AppActivate($aboutTitle)) {
+                    throw "Could not restore About window focus"
+                }
+                Start-Sleep -Milliseconds 600
+                Write-Log "ABOUT_FOCUS_RESTORED"
+                Write-Log ("FOREGROUND_AFTER_ABOUT=" + (Get-ForegroundInfo))
+                $wshell.SendKeys("{LEFT 3}")
+                Start-Sleep -Milliseconds 500
+                Write-Log "LEFT_3_SENT"
+                $wshell.SendKeys("{DOWN 6}")
+                Start-Sleep -Milliseconds 700
+                
+                Write-Log "DOWN_6_SENT"
+                Write-Log "RESULT=SCROLL_READY"
+                """
+        elif action == "close":
+            action_ps = r"""
+                Write-Log "CLOSE_ABOUT_START"
+                $aboutTitle = "About Network Analyzer"
+                if (-not $wshell.AppActivate($aboutTitle)) {
+                    throw "Could not activate About Network Analyzer"
+                }
+                Start-Sleep -Milliseconds 500
+                $wshell.SendKeys("{ESC}")
+                Start-Sleep -Milliseconds 700
+                Write-Log "ABOUT_ESC_SENT"  
+                $remaining = @(Get-VnaWindows | Where-Object {
+                    $_.Title -eq $aboutTitle
+                })    
+                if ($remaining.Count -gt 0) {
+                    throw "About window is still open after ESC"
+                }    
+                Write-Log "ABOUT_CLOSED"
+                Write-Log "RESULT=ABOUT_CLOSED"
+                """
+        else:
+
+            action_ps = """
+                Write-Log "SCROLL_START"
+                $aboutTitle = "About Network Analyzer"
+                if (-not $wshell.AppActivate($aboutTitle)) {
+                    throw "Could not activate About window"
+                }
+                Start-Sleep -Milliseconds 350
+                $wshell.SendKeys("{DOWN __STEPS__}")
+                Start-Sleep -Milliseconds 500
+                Write-Log "DOWN_SENT=__STEPS__"
+                Write-Log "RESULT=SCROLL_SENT"
+                """.replace("__STEPS__", str(scroll_steps))
+
+        inner_ps = (
+                "$ErrorActionPreference = 'Stop'\n"
+                f"$log = '{log_path}'\n"
+                f"$actionName = '{action}'\n"
+                + r"""
+                try {
+                    "SCRIPT_STARTED" | Set-Content -LiteralPath $log
+                    Add-Content -LiteralPath $log -Value "ACTION=$actionName"
+                    $p = Get-Process -Name '835x' -ErrorAction Stop |
+                         Where-Object { $_.MainWindowHandle -ne 0 } |
+                         Select-Object -First 1
+                    if (-not $p) {
+                        throw "E5080B application window not found"
+                    }
+                    $p.Refresh()
+                    Add-Content -LiteralPath $log -Value "PID=$($p.Id)"
+                    Add-Content -LiteralPath $log -Value "TITLE=$($p.MainWindowTitle)"
+                    Add-Content -LiteralPath $log -Value "SESSION=$($p.SessionId)"
+                    $wshell = New-Object -ComObject WScript.Shell
+                """
+                + helpers_ps
+                + "\n"
+                + action_ps
+                + r"""
+        exit 0
+    }
+    catch {
+        $errorMessage = $_ | Out-String
+        try {
+            [System.IO.File]::AppendAllText(
+                $log,
+                "`r`nERROR=" + $errorMessage
+            )
+        }
+        catch {}
+        exit 20
+    }
+    """
+        )
+
+        encoded = base64.b64encode(inner_ps.encode("utf-8")).decode("ascii")
+        task_registered = False
+        try:
+            for path in (b64_path, script_path, log_path):
+                self.session.run_ps(
+                    f"Remove-Item -LiteralPath '{path}' "
+                    f"-Force -ErrorAction SilentlyContinue"
+                )
+            for i in range(0, len(encoded), 500):
+                chunk = encoded[i:i + 500]
+                result = self.session.run_ps(f"[IO.File]::AppendAllText('{b64_path}', '{chunk}')")
+                if result.status_code != 0:
+                    return False, (
+                            "Script transfer failed: "
+                            + result.std_err.decode(errors="replace")
+                    )
+            convert_cmd = (
+                f"$b=[IO.File]::ReadAllText('{b64_path}');"
+                f"$d=[Convert]::FromBase64String($b);"
+                f"[IO.File]::WriteAllBytes('{script_path}',$d)"
+            )
+            result = self.session.run_ps(convert_cmd)
+            if result.status_code != 0:
+                return False, (
+                        "Script creation failed: "
+                        + result.std_err.decode(errors="replace")
+                )
+
+            check_script = f"""
+                $errors = $null
+                $tokens = $null
+                [System.Management.Automation.Language.Parser]::ParseFile(
+                    '{script_path}',
+                    [ref]$tokens,
+                    [ref]$errors
+                ) | Out-Null
+                if ($errors.Count -gt 0) {{
+                    $errors | ForEach-Object {{
+                        Write-Output "SYNTAX_ERROR: $($_.Message)"
+                        Write-Output "LINE: $($_.Extent.StartLineNumber)"
+                    }}
+                }}
+                else {{
+                    Write-Output "SYNTAX_OK"
+                }}
+                """
+
+            check_result = self.session.run_ps(check_script)
+            syntax_output = check_result.std_out.decode("utf-8", errors="replace").strip()
+            print("\n===== POWERSHELL SYNTAX CHECK =====")
+            print(syntax_output)
+            if (check_result.status_code != 0 or "SYNTAX_OK" not in syntax_output):
+                return False, (f"PowerShell syntax error:\n{syntax_output}")
+
+            reg_cmd = f"""
+                $ErrorActionPreference = 'Stop'
+                $user = '{current_user}'
+                $action = New-ScheduledTaskAction `
+                    -Execute 'powershell.exe' `
+                    -Argument '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "{script_path}"'
+                $principal = New-ScheduledTaskPrincipal `
+                    -UserId $user `
+                    -LogonType Interactive `
+                    -RunLevel Highest
+                $task = New-ScheduledTask `
+                    -Action $action `
+                    -Principal $principal
+                Register-ScheduledTask `
+                    -TaskName '{task_name}' `
+                    -InputObject $task `
+                    -Force | Out-Null
+                Start-ScheduledTask -TaskName '{task_name}'
+                """
+
+            result = self.session.run_ps(reg_cmd)
+            if result.status_code != 0:
+                return False, ("Scheduled Task failed: " + result.std_err.decode(errors="replace"))
+            task_registered = True
+            start_time = time.time()
+            state = None
+            last_result = None
+            log_output = ""
+
+            expected_result = {
+                "open": "RESULT=MORE_READY",
+                "prepare_scroll": "RESULT=SCROLL_READY",
+                "scroll": "RESULT=SCROLL_SENT",
+                "close": "RESULT=ABOUT_CLOSED"
+            }[action]
+
+            while time.time() - start_time < timeout:
+                time.sleep(0.5)
+                check_cmd = f"""
+                    $task = Get-ScheduledTask `
+                        -TaskName '{task_name}' `
+                        -ErrorAction SilentlyContinue
+                    if ($task) {{
+                        $info = Get-ScheduledTaskInfo -TaskName '{task_name}'
+                        Write-Output "STATE=$($task.State)"
+                        Write-Output "RESULT=$($info.LastTaskResult)"
+                    }}
+                    """
+
+                check = self.session.run_ps(check_cmd)
+                check_output = check.std_out.decode("utf-8", errors="replace").strip()
+                for line in check_output.splitlines():
+                    if line.startswith("STATE="):
+                        state = line.split("=", 1)[1].strip()
+                    elif line.startswith("RESULT="):
+                        try:
+                            last_result = int(
+                                line.split("=", 1)[1].strip()
+                            )
+                        except ValueError:
+                            pass
+
+                log_result = self.session.run_ps(
+                    f"Get-Content -LiteralPath '{log_path}' "
+                    f"-ErrorAction SilentlyContinue"
+                )
+
+                log_output = log_result.std_out.decode("utf-8", errors="replace").strip()
+                if expected_result in log_output:
+                    break
+                if "ERROR=" in log_output:
+                    break
+                if (
+                        state == "Ready"
+                        and last_result is not None
+                        and last_result != 0
+                ):
+                    break
+            print("\n===== E5080B ABOUT WINDOW =====")
+            print(f"ACTION={action}")
+            print(f"STATE={state}")
+            print(f"LAST_RESULT={last_result}")
+            print(log_output)
+            if (expected_result in log_output and "ERROR=" not in log_output):
+                return True, f"{action} completed."
+
+            return False, (
+                f"Action failed or timed out.\n"
+                f"ACTION={action}\n"
+                f"STATE={state}\n"
+                f"LAST_RESULT={last_result}\n"
+                f"LOG={log_output}"
+            )
+        finally:
+            if task_registered:
+                self.session.run_ps(
+                    f"Unregister-ScheduledTask "
+                    f"-TaskName '{task_name}' "
+                    f"-Confirm:$false "
+                    f"-ErrorAction SilentlyContinue"
+                )
+            self.session.run_ps(
+                f"Remove-Item -LiteralPath '{script_path}','{b64_path}' "
+                f"-Force -ErrorAction SilentlyContinue"
+            )
+
+    def capture_e508x_firmware_info(self, serial_number, results_list, worker, logger):
+
+        page_count = 1
+        capture_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        screenshot_name = f"System_Info_{capture_id}"
+
+        # 1. Open About + More
+        success, message = self.open_e508x_about_window(action="open")
+        if not success:
+            raise RuntimeError(message)
+
+        # 2. Screenshot About + More
+        image = self.screenshot_network(folder="Firmware", serial_number=serial_number, picture_name=f"Firmware More_{screenshot_name}", shot=page_count, full_screen=True)
+        if not image:
+            raise RuntimeError("Failed to capture More screenshot")
+
+        print(" > More screenshot completed.")
+        report_step(name=f"Firmware Information ScreenShot #N{page_count}", status="INFO", progress=26, results_list=results_list, value=f"Firmware Information ScreenShot #N{page_count}", image_path=image, worker=worker, logger=logger)
+        page_count = page_count + 1
+
+        # 3. Close More, restore About focus and press LEFT 3
+        success, message = self.open_e508x_about_window(action="prepare_scroll")
+        print(success, message)
+        if not success:
+            raise RuntimeError(message)
+
+        # 4. SCREENSHOT - ABOUT ONLY
+        image = self.screenshot_network(folder="Firmware", serial_number=serial_number, picture_name=f"Firmware About_{screenshot_name}",  shot=page_count, window_title="About Network Analyzer", full_screen=False)
+        if not image:
+            raise RuntimeError("About screenshot failed")
+        print(" > About screenshot completed.")
+        report_step(name=f"Firmware Information ScreenShot #N{page_count}", status="INFO", progress=28, results_list=results_list, value=f"Firmware Information ScreenShot #N{page_count}", image_path=image, worker=worker, logger=logger)
+
+        # 5. CLOSE ABOUT WINDOW
+        success, message = self.open_e508x_about_window(action="close")
+        print(success, message)
+        if not success:
+            raise RuntimeError(message)
 
 def device_remote_to_administrator(target_ip, worker=None, logger=None):
     results_list = []
@@ -2066,15 +4908,31 @@ def device_remote_to_administrator(target_ip, worker=None, logger=None):
         print(f"Error connecting to WIN user: {e}")
         report_step(f"Error connecting to WIN user: {e}", "FAIL", 8, results_list, " ", None, worker, logger)
 
-
 if __name__ == "__main__":
 
     target_ip = "192.168.1.200"
+    serial_number = "MY59202793"
     user = "Administrator"
     password = "Keysight4u!"
 
     updater = WINconn(target_ip, user, password)
-    updater.uninstall_all_calibration_advisors(False)
+    updater.capture_e508x_firmware_info(serial_number)
+
+    #pdater.uninstall_all_calibration_advisors(False)
+    #updater.close_firmware_revision()
+    #updater.open_windows_system()
+    #Firmware_image = updater.screenshot_network("Firmware", "MY49810546", "screenshot_name", "1")
+    #updater.open_system_information()
+    #time.sleep(2)
+    #updater.prepare_system_information()
+    #time.sleep(1)
+    #updater.maximize_system_information()
+    #time.sleep(5)
+    #updater.capture_all_system_information(serial_number, results_list, worker, logger)
+    #result, message = updater.open_firmware_revision()
+    #print(result, message)
+    #Firmware_image = updater.screenshot_firmware("Firmware", "MY49810546", "screenshot_name", "1")
+
 
 
     """updater.setup_local_machine()
