@@ -522,14 +522,16 @@ def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_
             serial_number = device_name
 
         is_n90_family = (isinstance(model, str) and model.upper().startswith("N90"))
-        is_e50_family = (isinstance(model, str) and model.upper().startswith("E50"))
+        is_e506_family = (isinstance(model, str) and model.upper().startswith("E506"))
+        is_e508_family = (isinstance(model, str) and model.upper().startswith("E508"))
         is_n52_family = (isinstance(model, str) and model.upper().startswith("N52"))
 
         print(f"Model from PDF: {model}")
         print(f"Serial from PDF: {serial_number}")
         print(f"is_new_device: {is_new_device}")
         print(f"is_n90_family: {is_n90_family}")
-        print(f"is_e50_family: {is_e50_family}")
+        print(f"is_e506x_family: {is_e506_family}")
+        print(f"is_e508x_family: {is_e508_family}")
         print(f"is_n52_family: {is_n52_family}")
 
         system_images = []
@@ -540,12 +542,13 @@ def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_
             system_images, license_images = get_n90_email_images(serial_number)
             subject, html_body = build_new_n90_device_email(pdf_info=pdf_info, system_images=system_images, license_images=license_images, preview=preview)
 
-        elif is_e50_family and is_new_device:
-            firmware_images, system_images, license_images, system_info_images = get_e50_email_images(serial_number)
-            subject, html_body = build_new_e50_device_email(pdf_info=pdf_info, firmware_images=firmware_images,
-                                                            system_images=system_images,
-                                                            system_info_images=system_info_images,
-                                                            license_images=license_images, preview=preview)
+        elif is_e506_family and is_new_device:
+            firmware_images, system_images, license_images, system_info_images = get_e506x_email_images(serial_number)
+            subject, html_body = build_new_e506x_device_email(pdf_info=pdf_info, firmware_images=firmware_images, system_images=system_images, system_info_images=system_info_images, license_images=license_images, preview=preview)
+
+        elif is_e508_family and is_new_device:
+            firmware_images, system_images, license_images, system_info_images = get_e508x_email_images(serial_number)
+            subject, html_body = build_new_e508x_device_email(pdf_info=pdf_info, firmware_images=firmware_images, system_images=system_images, system_info_images=system_info_images, license_images=license_images, preview=preview)
 
             # =====================================================
             # REGULAR DEVICE
@@ -868,6 +871,7 @@ def extract_device_info_from_pdf(pdf_file):
         "calibration expiration date": "Unknown",
         "device_options": "Unknown",
         "option_descriptions": [],
+        "license_options": [],
         "windows_version": "Unknown",
         "self_test_status": "Unknown"
     }
@@ -1048,6 +1052,104 @@ def extract_device_info_from_pdf(pdf_file):
                 save_option()
                 info["option_descriptions"] = option_descriptions
                 info["device_options"] = ",".join(option["option_id"] for option in option_descriptions)
+
+            # =====================================================
+            # E5080B - KEYSIGHT LICENSE MANAGER
+            # =====================================================
+
+            if model == "E5080B":
+
+                license_options = []
+
+                license_match = re.search(
+                    r"Keysight\s+License\s+Manager\s+"
+                    r"Option\s+ID\s+Name/Description"
+                    r"(.*?)"
+                    r"(?=Image\s+\d+\s*:|"
+                    r"System\s+Information|"
+                    r"Test\s+Steps|"
+                    r"\Z)",
+                    text,
+                    re.IGNORECASE | re.DOTALL
+                )
+
+                if license_match:
+
+                    license_text = license_match.group(1)
+
+                    lines = [
+                        line.strip()
+                        for line in license_text.splitlines()
+                        if line.strip()
+                    ]
+
+                    current_option = None
+                    description_parts = []
+
+                    def save_license_option():
+
+                        if current_option is None:
+                            return
+
+                        description = " ".join(description_parts)
+                        description = re.sub(
+                            r"\s+", " ", description
+                        ).strip()
+
+                        license_options.append({
+                            "option_id": current_option,
+                            "description": description
+                        })
+
+                    option_pattern = re.compile(
+                        r"^("
+                        r"(?:E5080B-[A-Z0-9]+)"
+                        r"|(?:S\d+[A-Z0-9]*_[A-Z0-9]+)"
+                        r")"
+                        r"(?:\s+(.+))?$",
+                        re.IGNORECASE
+                    )
+
+                    for line in lines:
+
+                        option_match = option_pattern.match(line)
+
+                        if option_match:
+
+                            save_license_option()
+
+                            current_option = (
+                                option_match.group(1).upper()
+                            )
+
+                            description_parts = []
+
+                            if option_match.group(2):
+                                description_parts.append(
+                                    option_match.group(2)
+                                )
+
+                        elif current_option is not None:
+
+                            description_parts.append(line)
+
+                    save_license_option()
+
+                    info["license_options"] = license_options
+
+                    print("\nKeysight License Manager:")
+                    for option in license_options:
+                        print(
+                            f"  {option['option_id']:<18} "
+                            f"{option['description']}"
+                        )
+
+                else:
+                    print(
+                        " > Keysight License Manager "
+                        "table not found in PDF."
+                    )
+
             else:
                 print(" > Option table not found in PDF.")
         else:
@@ -1092,6 +1194,13 @@ def extract_device_info_from_pdf(pdf_file):
                 print(
                     f"  "
                     f"{option['option_id']:<8} "
+                    f"{option['description']}"
+                )
+        if info["license_options"]:
+            print("\nKeysight License Manager:")
+            for option in info["license_options"]:
+                print(
+                    f"  {option['option_id']:<18} "
                     f"{option['description']}"
                 )
 
@@ -1547,7 +1656,7 @@ def extract_n90_license_manager_options(text, device_model=None):
 
     return cleaned_options
 
-def build_new_e50_device_email(pdf_info, firmware_images, system_images, system_info_images, license_images, preview=False):
+def build_new_e506x_device_email(pdf_info, firmware_images, system_images, system_info_images, license_images, preview=False):
 
     firmware_images = firmware_images or []
     system_images = system_images or []
@@ -1916,6 +2025,397 @@ def build_new_e50_device_email(pdf_info, firmware_images, system_images, system_
 
     return subject, html_body
 
+from pathlib import Path
+import html
+
+
+def build_new_e508x_device_email(pdf_info, firmware_images=None, system_images=None, system_info_images=None, license_images=None, preview=False):
+
+    firmware_images = firmware_images or []
+    system_images = system_images or []
+    system_info_images = system_info_images or []
+    license_images = license_images or []
+
+    model = pdf_info.get("device_type", "E5080B")
+    serial_number = pdf_info.get("device_name", "Unknown")
+    firmware_version = pdf_info.get("firmware_version", "Unknown")
+    windows_version = pdf_info.get("windows_version", "Unknown")
+    self_test_status = pdf_info.get("self_test_status", "Unknown")
+
+    calibration_expiration_date = pdf_info.get(
+        "calibration expiration date", "Unknown"
+    )
+
+    device_options = pdf_info.get("device_options", "Unknown")
+    option_descriptions = pdf_info.get("option_descriptions", [])
+    license_options = pdf_info.get("license_options", [])
+    license_ids = []
+    for option in license_options:
+        if isinstance(option, dict):
+            option_id = str(option.get("option_id", "")).strip()
+        else:
+            option_id = str(option).strip()
+
+        if option_id and option_id not in license_ids:
+            license_ids.append(option_id)
+    licenses_text = "; ".join(license_ids) if license_ids else "None"
+
+    if (
+        not calibration_expiration_date
+        or calibration_expiration_date == "Unknown"
+    ):
+        calibration_expiration_date = "None"
+
+    # =====================================================
+    # OPTIONS
+    # =====================================================
+
+    option_ids = []
+
+    if isinstance(device_options, str):
+        if device_options and device_options.lower() != "unknown":
+            option_ids = [
+                value.strip()
+                for value in device_options.split(",")
+                if value.strip()
+            ]
+
+    elif isinstance(device_options, (list, tuple)):
+        for option in device_options:
+
+            if isinstance(option, (list, tuple)):
+                if option:
+                    option_ids.append(str(option[0]).strip())
+
+            elif isinstance(option, dict):
+                option_id = option.get(
+                    "option_id",
+                    option.get("id", "")
+                )
+                if option_id:
+                    option_ids.append(str(option_id).strip())
+
+            else:
+                option_ids.append(str(option).strip())
+
+    # Normalize descriptions into the same structure as E506x
+    normalized_descriptions = []
+
+    if isinstance(option_descriptions, dict):
+        for option_id, description in option_descriptions.items():
+            normalized_descriptions.append({
+                "option_id": str(option_id).strip(),
+                "description": str(description).strip()
+            })
+
+    elif isinstance(option_descriptions, (list, tuple)):
+        for option in option_descriptions:
+
+            if isinstance(option, dict):
+                normalized_descriptions.append({
+                    "option_id": str(
+                        option.get("option_id", option.get("id", ""))
+                    ).strip(),
+                    "description": str(
+                        option.get("description", "")
+                    ).strip()
+                })
+
+            elif isinstance(option, (list, tuple)) and option:
+                normalized_descriptions.append({
+                    "option_id": str(option[0]).strip(),
+                    "description": (
+                        str(option[1]).strip()
+                        if len(option) > 1 else ""
+                    )
+                })
+
+    # Add option IDs that appear only in option_descriptions
+    for option in normalized_descriptions:
+        option_id = option["option_id"]
+
+        if option_id and option_id not in option_ids:
+            option_ids.append(option_id)
+
+    # Remove duplicates without changing order
+    option_ids = list(dict.fromkeys(option_ids))
+
+    options_text = ",".join(option_ids) if option_ids else "None"
+
+    description_map = {
+        option["option_id"]: option["description"]
+        for option in normalized_descriptions
+        if option["option_id"]
+    }
+
+    # =====================================================
+    # HARDWARE OPTIONS
+    # =====================================================
+
+    hardware_options_html = """
+    <br>
+    <p style="margin-top:10px;margin-bottom:15px;">
+        <b>Hardware options:</b>
+    </p>
+    """
+
+    if option_ids:
+        for option_id in option_ids:
+
+            description = description_map.get(option_id, "")
+
+            if description:
+                option_html = (
+                    f"Option <b>{html.escape(option_id)}</b> "
+                    f"({html.escape(description)})"
+                )
+            else:
+                option_html = (
+                    f"Option <b>{html.escape(option_id)}</b>"
+                )
+
+            hardware_options_html += f"""
+            <p style="margin-top:0;margin-bottom:15px;">
+                {option_html}
+            </p>
+            """
+    else:
+        hardware_options_html += "<p>None</p>"
+
+    # =====================================================
+    # KEYSIGHT LICENSE MANAGER - LICENSE DESCRIPTIONS
+    # =====================================================
+
+    license_options_html = """
+    <br>
+    <p style="margin-top:10px;margin-bottom:15px;">
+        <b>Keysight License Manager:</b>
+    </p>
+    """
+
+    if license_options:
+
+        for license_option in license_options:
+
+            if isinstance(license_option, dict):
+                license_id = str(
+                    license_option.get("option_id", "")
+                ).strip()
+
+                description = str(
+                    license_option.get("description", "")
+                ).strip()
+            else:
+                license_id = str(license_option).strip()
+                description = ""
+
+            if not license_id:
+                continue
+
+            license_id_html = html.escape(license_id)
+            description_html = html.escape(description)
+
+            if description:
+                license_text = (
+                    f"License <b>{license_id_html}</b> "
+                    f"({description_html})"
+                )
+            else:
+                license_text = (
+                    f"License <b>{license_id_html}</b>"
+                )
+
+            license_options_html += f"""
+            <p style="
+                margin-top:0;
+                margin-bottom:15px;
+            ">
+                {license_text}
+            </p>
+            """
+
+    else:
+        license_options_html += """
+        <p>None</p>
+        """
+
+    # =====================================================
+    # IMAGE BUILDER
+    # =====================================================
+
+    def build_images_html(images, title, cid_prefix):
+
+        if not images:
+            return ""
+
+        images_html = f"""
+        <br>
+        <hr>
+        <h3>{html.escape(title)}</h3>
+        """
+
+        for index, image_path in enumerate(images, start=1):
+
+            image_path = Path(image_path)
+
+            if preview:
+                image_src = image_path.resolve().as_uri()
+            else:
+                image_src = f"cid:{cid_prefix}{index}"
+
+            images_html += f"""
+            <p>
+                <b>{html.escape(title)} #{index}</b>
+            </p>
+            <p>
+                <img
+                    src="{image_src}"
+                    style="
+                        max-width:900px;
+                        width:100%;
+                        height:auto;
+                        border:1px solid #cccccc;
+                    "
+                >
+            </p>
+            """
+
+        return images_html
+
+    # =====================================================
+    # IMAGES
+    # =====================================================
+
+    firmware_html = build_images_html(
+        firmware_images,
+        "About Network Analyzer + Instrument Options Information",
+        "firmware_images_"
+    )
+
+    license_html = build_images_html(
+        license_images,
+        "License Information",
+        "license_image_"
+    )
+
+    system_html = build_images_html(
+        system_images,
+        "System Information",
+        "system_image_"
+    )
+
+    system_info_html = build_images_html(
+        system_info_images,
+        "Windows Information",
+        "system_info_images"
+    )
+
+    # =====================================================
+    # SUBJECT
+    # =====================================================
+
+    subject = (
+        f"[INBOUND] "
+        f"{model},"
+        f"{serial_number},"
+        f"{firmware_version} "
+        f"as bought from Lake View"
+    )
+
+    # =====================================================
+    # HTML BODY
+    # =====================================================
+
+    html_body = f"""
+    <html>
+    <body style="
+        font-family:Aptos,Calibri,Arial,sans-serif;
+        font-size:11pt;
+        direction:ltr;
+        color:#000000;
+    ">
+
+        <ol>
+            <li style="margin-bottom:15px;">
+                <b>Model:</b>
+                {html.escape(str(model))}
+            </li>
+
+            <li style="margin-bottom:15px;">
+                <b>S/N:</b>
+                {html.escape(str(serial_number))}
+            </li>
+
+            <li style="margin-bottom:15px;">
+                <b>HW Options:</b>
+                {html.escape(options_text)}
+            </li>
+            
+            <li style="margin-bottom:15px;">
+                <b>Licenses:</b>
+                {html.escape(licenses_text)}
+            </li>
+
+            <li style="margin-bottom:15px;">
+                <b>F/W:</b>
+                {html.escape(str(firmware_version))}
+            </li>
+
+            <li style="margin-bottom:15px;">
+                <b>OS:</b>
+                {html.escape(str(windows_version))}
+            </li>
+
+            <li style="margin-bottom:15px;">
+                <b>Diagnostic Test:</b>
+                {html.escape(str(self_test_status))}
+            </li>
+
+            <li style="margin-bottom:15px;">
+                <b>Calibration Due Date:</b>
+                {html.escape(str(calibration_expiration_date))}
+            </li>
+        </ol>
+
+        {hardware_options_html}
+        {license_options_html}
+        {firmware_html}
+        {license_html}
+        {system_html}
+        {system_info_html}
+
+    </body>
+    </html>
+    """
+
+    # =====================================================
+    # DEBUG
+    # =====================================================
+
+    print("\n" + "=" * 70)
+    print("E5080B NEW DEVICE EMAIL")
+    print("=" * 70)
+    print(f"Model           : {model}")
+    print(f"Serial Number   : {serial_number}")
+    print(f"Options         : {options_text}")
+    print(f"Firmware        : {firmware_version}")
+    print(f"OS              : {windows_version}")
+    print(f"Diagnostic Test : {self_test_status}")
+    print(f"Calibration Due : {calibration_expiration_date}")
+
+    print("\nHardware options:")
+    for option_id in option_ids:
+        print(
+            f"  {option_id:<8} "
+            f"{description_map.get(option_id, '')}"
+        )
+
+    print("\nSubject:")
+    print(subject)
+    print("=" * 70 + "\n")
+
+    return subject, html_body
+
 # Existing option extraction for E506x devices.
 def extract_e506x_options(text):
 
@@ -2099,7 +2599,7 @@ def load_images(screenshot_root, serial_number, folder_name, valid_extensions):
 
     return system_images, license_images"""
 
-def get_e50_email_images(serial_number):
+def get_e506x_email_images(serial_number):
 
     screenshot_path = load_configFile("screenShot_path")
     screenshot_root = Path(screenshot_path)
@@ -2128,6 +2628,54 @@ def get_e50_email_images(serial_number):
 
     return firmware_images, system_images, license_images, system_info_images
 
+def get_e508x_email_images(serial_number):
+
+    screenshot_path = load_configFile("screenShot_path")
+    screenshot_root = Path(screenshot_path)
+    valid_extensions = {".png", ".jpg", ".jpeg"}
+
+    firmware_images = load_images(
+        screenshot_root, serial_number, "Firmware", valid_extensions
+    )
+
+    system_images = load_images(
+        screenshot_root, serial_number, "System", valid_extensions
+    )
+
+    license_images = load_images(
+        screenshot_root, serial_number, "License", valid_extensions
+    )
+
+    system_info_images = load_images(
+        screenshot_root, serial_number, "System Info", valid_extensions
+    )
+
+    print("\n" + "=" * 70)
+    print(f"E5080B NEW DEVICE IMAGES - {serial_number}")
+    print("=" * 70)
+
+    print(f"Firmware images ({len(firmware_images)}):")
+    for image in firmware_images:
+        print("   ", image)
+
+    print(f"System images ({len(system_images)}):")
+    for image in system_images:
+        print("   ", image)
+
+    print(f"License images ({len(license_images)}):")
+    for image in license_images:
+        print("   ", image)
+
+    print(f"System Info images ({len(system_info_images)}):")
+    for image in system_info_images:
+        print("   ", image)
+
+    return (
+        firmware_images,
+        system_images,
+        license_images,
+        system_info_images
+    )
 
 def add_inline_images(mail, image_paths, cid_prefix):
 
@@ -2150,7 +2698,6 @@ def add_inline_images(mail, image_paths, cid_prefix):
             mime_type = "image/png"
 
         attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x370E001F", mime_type)
-
 
 def main():
 
@@ -2211,12 +2758,12 @@ if __name__ == "__main__":
         "Benny.a@tlv-mm.com"
     ]
 
-    device_name = "E5061B"
+    device_name = "E5080B"
     device_type = "Network Analyzer"
     slot = "SLOT1"
     ip = "192.168.1.100"
     final_status = "PASS"
-    pdf_file = r"C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results\MY49810546\MY49810546.pdf"
+    pdf_file = r"C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results\MY59202793\MY59202793.pdf"
 
     pdf_info = extract_device_info_from_pdf(pdf_file)
 
