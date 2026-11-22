@@ -222,7 +222,6 @@ class NetworkAnalyzerConn:
 
     def e508x_license_full_query(self, licenses):
         results_list = []
-
         try:
             print("\n===== LICENSE FULL QUERY =====")
             print("Received licenses:", licenses)

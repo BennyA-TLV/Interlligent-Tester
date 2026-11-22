@@ -135,11 +135,12 @@ class TestWorker(QThread):
                 if not ping_result:
                     self.test_failed = True
                 else:
-                    deviceModelFamily = device_remote_to_administrator(ip, worker=self, logger=device_logger)
+                    deviceModelFamily = identify_remote_device(ip, worker=self, logger=device_logger)
                     if deviceModelFamily.startswith("N90"):
                         serialNumber, deviceModel, result = xsa_response(ip, worker=self, logger=device_logger)
-                    if deviceModelFamily.startswith("E50"):
+                    if deviceModelFamily.startswith("E50") or deviceModelFamily.startswith("N52"):
                         serialNumber, deviceModel, result = network_response(ip, worker=self, logger=device_logger)
+
                     self.device_info_update.emit(row_index, deviceModel, serialNumber)
                     send_test_started_email(recipients, deviceModel, row_index + 1, ip, is_new_device)
                     test_function = self.get_test_function(deviceModel)
@@ -471,6 +472,8 @@ class TestWorker(QThread):
             return E506x_System_Test
         if is_e508x(device_model):
             return E508x_System_Test
+        if is_n52xx(device_model):
+            return N52xx_System_Test
 
         return None
 

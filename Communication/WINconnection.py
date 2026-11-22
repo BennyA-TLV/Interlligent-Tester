@@ -1,7 +1,9 @@
 from PIL import Image, ImageChops, ImageStat
 from Communication.Connection import *
 from pathlib import Path
+from ctypes import wintypes
 import subprocess
+import ctypes
 import socket
 import shutil
 import base64
@@ -1235,7 +1237,7 @@ class WINconn:
         return "1"
 
     # The screenshot function - operat no the remote device
-    def screenshot(self, folder, serial_number, picture_name="License Manager", shot=1):
+    def screenshot_old(self, folder, serial_number, picture_name="License Manager", shot=1):
         if not self.session: self.connect()
 
         session_id = self.get_active_session_id()
@@ -1286,6 +1288,9 @@ class WINconn:
         else:
             print(" > Error: Screenshot resulted in black screen or file not found.")
             return None
+
+    def screenshot(self, folder,  serial_number, picture_name="License Manager", shot=1):
+        return self.screenshot_windows(folder=folder, serial_number=serial_number, picture_name=picture_name, shot=shot, full_screen=True)
 
     def screenshot_network_old(self, folder, serial_number, picture_name="Firmware Revision", shot=1, window_title="About E5061B", full_screen=False):
         if not self.session:
@@ -1349,7 +1354,7 @@ class WINconn:
                 " > Error: About E5061B screenshot was not created.")
             return None
 
-    def screenshot_network(self, folder, serial_number, picture_name="Firmware Revision",  shot=1,  window_title="About E5061B", full_screen=False):
+    def screenshot_network(self, folder, serial_number, picture_name="Firmware Revision", shot=1, window_title="About E5061B", full_screen=False):
         if not self.session:
             self.connect()
 
@@ -1416,6 +1421,405 @@ class WINconn:
 
         print(" > ERROR: Screenshot file was not created or is inaccessible.")
         return None
+
+    def screenshot_windows(self, folder, serial_number, picture_name="Firmware Revision", shot=1, window_title="About E5061B", full_screen=False):
+
+        remote_script = r"C:\Windows\Temp\CaptureScreen.ps1"
+        remote_image = r"C:\Windows\Temp\TesterCapture.png"
+        capture_attempted = False
+        image_downloaded = False
+
+        print("\n" + "=" * 70)
+        print(" > Starting Windows Screenshot")
+        print(f" > Device IP: {self.target_ip}")
+        print(f" > Serial Number: {serial_number}")
+        print(f" > Picture Name: {picture_name}")
+        print(f" > Shot Number: {shot}")
+        print("=" * 70)
+
+        try:
+
+            # Step 1: Establish WinRM connection
+            if not self.session:
+                self.connect()
+
+            # Establish SMB connection
+            if not self.connect_smb():
+                print(" > ERROR: SMB connection failed")
+                return None
+
+            # Step 2: Upload PowerShell capture script
+            print(" > Step 1: Uploading capture script")
+            uploaded_script = self.upload_capture_script()
+
+            if not uploaded_script:
+                print(" > ERROR: Capture script upload failed")
+                return None
+
+            # Step 3: Execute screenshot capture
+            print(" > Step 2: Executing capture script")
+            capture_attempted = True
+
+            success = self.execute_capture_script(timeout=60, window_title=window_title, full_screen=full_screen)
+
+            if not success:
+                print(" > ERROR: Screenshot execution failed")
+                return None
+
+            # Step 4: Download screenshot
+            print(" > Step 3: Downloading screenshot")
+            local_image = self.download_capture_image(folder=folder, serial_number=serial_number, picture_name=picture_name, shot=shot)
+
+            if not local_image:
+                print(" > ERROR: Screenshot download failed")
+                return None
+
+            if not os.path.isfile(local_image):
+                print(" > ERROR: Local screenshot not found")
+                return None
+
+            image_downloaded = True
+
+            print("=" * 70)
+            print(" > SUCCESS! Windows screenshot completed")
+            print(f" > Screenshot saved: {local_image}")
+            print("=" * 70 + "\n")
+
+            return local_image
+
+        except Exception as e:
+            print(f" > ERROR: Windows screenshot failed: {e}")
+            return None
+
+        finally:
+            # Remove temporary files after successful download
+            if image_downloaded:
+                try:
+                    print(" > Cleaning temporary files")
+
+                    cleanup_command = f"""
+                    $ErrorActionPreference = 'Stop'
+                    if (Test-Path -LiteralPath '{remote_image}') {{
+                        Remove-Item -LiteralPath '{remote_image}' -Force
+                    }}
+                    if (Test-Path -LiteralPath '{remote_script}') {{
+                        Remove-Item -LiteralPath '{remote_script}' -Force
+                    }}
+                    Write-Output "CLEANUP_COMPLETED"
+                    """
+                    result = self.session.run_ps(cleanup_command)
+                    if result.status_code == 0:
+                        print(" > Temporary files removed")
+                    else:
+                        print(" > WARNING: Cleanup failed")
+                        print(result.std_err.decode(errors="replace"))
+
+                except Exception as e:
+                    print(f" > WARNING: Cleanup failed: {e}")
+
+            elif capture_attempted:
+                print(" > Remote files kept for troubleshooting")
+
+    def upload_capture_script(self):
+
+        if not self.session:
+            self.connect()
+
+        local_script = (
+                Path(__file__).resolve().parent /
+                "CaptureScreen.ps1"
+        )
+        remote_script = r"C:\Windows\Temp\CaptureScreen.ps1"
+        network_path = (
+            f"\\\\{self.target_ip}"
+            r"\C$\Windows\Temp\CaptureScreen.ps1"
+        )
+
+        if not local_script.is_file():
+            print(f" > ERROR: Script not found: {local_script}")
+            return None
+
+        try:
+            print(f" > Local script: {local_script}")
+            print(f" > Remote script: {network_path}")
+
+            shutil.copyfile(str(local_script), network_path)
+            local_size = local_script.stat().st_size
+            remote_size = os.path.getsize(network_path)
+
+            print(f" > Local file size: {local_size} bytes")
+            print(f" > Remote file size: {remote_size} bytes")
+
+            if local_size != remote_size:
+                print(" > ERROR: File size mismatch")
+                return None
+
+            print(" > SUCCESS! CaptureScreen.ps1 copied successfully")
+            return remote_script
+
+        except Exception as e:
+            print(f" > ERROR: Script upload failed: {e}")
+            return None
+
+    def download_capture_image(self, folder, serial_number, picture_name="Firmware Revision", shot=1):
+
+        screenshot_path = load_configFile("screenShot_path")
+        local_dir = Path(screenshot_path) / serial_number / folder
+        local_dir.mkdir(parents=True, exist_ok=True)
+        local_image = (local_dir / f"{serial_number}_{picture_name}_{shot}.png")
+        network_path = (
+            f"\\\\{self.target_ip}"
+            r"\C$\Windows\Temp\TesterCapture.png"
+        )
+        temp_image = local_dir / f"capture_{uuid.uuid4().hex}.tmp"
+
+        try:
+            print(f" > Remote image: {network_path}")
+            if not os.path.isfile(network_path):
+                print(" > ERROR: Remote screenshot not found")
+                return None
+
+            shutil.copyfile(network_path, str(temp_image))
+            with open(temp_image, "rb") as image_file:
+                if image_file.read(8) != b"\x89PNG\r\n\x1a\n":
+                    print(" > ERROR: Invalid PNG file")
+                    return None
+
+            os.replace(temp_image, local_image)
+            print(f" > Image size: {local_image.stat().st_size} bytes")
+            print(f" > SUCCESS! Screenshot saved: {local_image}")
+            return str(local_image)
+
+        except Exception as e:
+            print(f" > ERROR: Screenshot download failed: {e}")
+            return None
+
+        finally:
+            if temp_image.exists():
+                temp_image.unlink()
+
+    def connect_smb(self):
+
+        network_share = f"\\\\{self.target_ip}\\C$"
+        network_path = network_share + r"\Windows\Temp"
+
+        try:
+            # Check whether SMB access already exists
+            if os.path.isdir(network_path):
+                print(" > SMB connection already established")
+                return True
+
+            print(f" > Establishing SMB connection to {self.target_ip}")
+            username = self.username
+
+            if "\\" not in username and "@" not in username:
+                username = f"{self.target_ip}\\{username}"
+
+            class NETRESOURCE(ctypes.Structure):
+
+                _fields_ = [
+                    ("dwScope", wintypes.DWORD),
+                    ("dwType", wintypes.DWORD),
+                    ("dwDisplayType", wintypes.DWORD),
+                    ("dwUsage", wintypes.DWORD),
+                    ("lpLocalName", wintypes.LPWSTR),
+                    ("lpRemoteName", wintypes.LPWSTR),
+                    ("lpComment", wintypes.LPWSTR),
+                    ("lpProvider", wintypes.LPWSTR)
+                ]
+
+            resource = NETRESOURCE()
+            resource.dwType = 1
+            resource.lpRemoteName = network_share
+
+            connect = ctypes.WinDLL("mpr").WNetAddConnection2W
+            connect.argtypes = [
+                ctypes.POINTER(NETRESOURCE),
+                wintypes.LPCWSTR,
+                wintypes.LPCWSTR,
+                wintypes.DWORD
+            ]
+
+            connect.restype = wintypes.DWORD
+            result = connect(
+                ctypes.byref(resource),
+                self.password,
+                username,
+                0
+            )
+
+            if result != 0:
+                print(f" > ERROR: SMB connection failed: {result}")
+                print(f" > {ctypes.FormatError(result)}")
+
+                if result == 1219:
+                    print(" > Existing SMB connection uses different credentials")
+                return False
+
+            # Verify access after authentication
+            if not os.path.isdir(network_path):
+                print(" > ERROR: SMB path is inaccessible")
+                return False
+
+            print(f" > SMB connection established to {self.target_ip}")
+            return True
+
+        except Exception as e:
+            print(f" > ERROR: SMB connection failed: {e}")
+            return False
+
+    def execute_capture_script(self, timeout=60, window_title="About E5061B", full_screen=False):
+
+        if not self.session:
+            self.connect()
+
+        task_name = f"TesterCapture_{uuid.uuid4().hex[:10]}"
+        remote_script = r"C:\Windows\Temp\CaptureScreen.ps1"
+        remote_image = r"C:\Windows\Temp\TesterCapture.png"
+
+        try:
+            # Get the active interactive user
+            result = self.session.run_ps("(Get-CimInstance Win32_ComputerSystem).UserName")
+            current_user = result.std_out.decode(errors="replace").strip()
+
+            if result.status_code != 0 or not current_user:
+                print(" > ERROR: No active interactive user")
+                return False
+
+            print(f" > Interactive user: {current_user}")
+
+            if full_screen:
+                print(" > Screenshot mode: FULL SCREEN")
+                capture_arguments = "-FullScreen"
+            else:
+                if not window_title or '"' in window_title:
+                    print(" > ERROR: Invalid window title")
+                    return False
+
+                print(f" > Screenshot mode: WINDOW ({window_title})")
+                capture_arguments = f'-WindowTitle "{window_title}"'
+
+            capture_arguments = capture_arguments.replace("'", "''")
+
+            # Create and start a temporary scheduled task
+            command = f"""
+            $ErrorActionPreference = 'Stop'
+
+            $taskName = '{task_name}'
+            $user = '{current_user}'
+            $scriptPath = '{remote_script}'
+            $imagePath = '{remote_image}'
+
+            if (-not (Test-Path -LiteralPath $scriptPath)) {{
+                throw "CaptureScreen.ps1 not found"
+            }}
+
+            if (Test-Path -LiteralPath $imagePath) {{
+                Remove-Item -LiteralPath $imagePath -Force
+            }}
+
+            $arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "{remote_script}" -OutputPath "{remote_image}" {capture_arguments}'
+
+            $action = New-ScheduledTaskAction `
+                -Execute "powershell.exe" `
+                -Argument $arguments
+
+            $principal = New-ScheduledTaskPrincipal `
+                -UserId $user `
+                -LogonType Interactive `
+                -RunLevel Limited
+
+            $task = New-ScheduledTask `
+                -Action $action `
+                -Principal $principal
+
+            Register-ScheduledTask `
+                -TaskName $taskName `
+                -InputObject $task | Out-Null
+
+            Write-Output "TASK_CREATED"
+            Start-ScheduledTask -TaskName $taskName
+            Write-Output "TASK_STARTED"
+            """
+
+            result = self.session.run_ps(command)
+            print(result.std_out.decode(errors="replace").strip())
+
+            if result.status_code != 0:
+                print(" > ERROR: Failed to create or start task")
+                print(result.std_err.decode(errors="replace"))
+                return False
+
+            print(" > Waiting for screenshot...")
+
+            start_time = time.monotonic()
+            output = ""
+
+            while time.monotonic() - start_time < timeout:
+
+                command = f"""
+                $task = Get-ScheduledTask -TaskName '{task_name}'
+                $info = Get-ScheduledTaskInfo -TaskName '{task_name}'
+                Write-Output "STATE=$($task.State)"
+                Write-Output "RESULT=$($info.LastTaskResult)"
+                if (Test-Path -LiteralPath '{remote_image}') {{
+                    $file = Get-Item -LiteralPath '{remote_image}'
+                    Write-Output "IMAGE_SIZE=$($file.Length)"
+                }}
+                """
+
+                result = self.session.run_ps(command)
+                output = result.std_out.decode(errors="replace").strip()
+                lines = output.splitlines()
+
+                if "STATE=Ready" in lines:
+                    if "RESULT=0" in lines:
+                        for line in lines:
+                            if line.startswith("IMAGE_SIZE="):
+                                image_size = int(line.split("=", 1)[1])
+                                if image_size > 0:
+                                    print(f" > Image size: {image_size} bytes")
+                                    print(" > SUCCESS! Screenshot created")
+                                    return True
+
+                time.sleep(1)
+            print(" > ERROR: Screenshot capture timeout")
+            print(output)
+
+            return False
+
+        except Exception as e:
+            print(f" > ERROR: Capture execution failed: {e}")
+            return False
+
+        finally:
+            # Remove the temporary scheduled task
+            try:
+                cleanup_command = f"""
+                $task = Get-ScheduledTask `
+                    -TaskName '{task_name}' `
+                    -ErrorAction SilentlyContinue
+                if ($null -ne $task) {{
+
+                    if ($task.State -eq 'Running') {{
+                        Stop-ScheduledTask -TaskName '{task_name}'
+                    }}
+                    Unregister-ScheduledTask `
+                        -TaskName '{task_name}' `
+                        -Confirm:$false
+                    Write-Output "TASK_REMOVED"
+                }}
+                """
+
+                result = self.session.run_ps(cleanup_command)
+                if result.status_code == 0:
+                    print(" > Temporary task cleanup completed")
+                else:
+                    print(" > WARNING: Task cleanup failed")
+                    print(result.std_err.decode(errors="replace"))
+
+            except Exception as e:
+                print(f" > WARNING: Task cleanup failed: {e}")
 
     # The last page function - operat no the remote device checking if it is the lase page by scrolling
     def is_last_page(self, img_path1, img_path2):
@@ -1505,6 +1909,43 @@ class WINconn:
                 report_step(name=f"System Information ScreenShot {serial_number}_{screenshot_name}_#N{page_count}", status="INFO", progress=40,results_list=results_list, value=f"System Information ScreenShot #N{page_count}", image_path=curr_img, worker=worker, logger=logger)
 
         print("Done. All system information captured.")
+
+    # The screenshot all firmware information windows function - operat no the remote device
+    def capture_all_firmware_information(self, serial_number, results_list, worker, logger):
+        all_captured = False
+        page_count = 3
+        steps = 7
+        capture_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        screenshot_name = f"System_Info_{capture_id}"
+
+        print(" > Firmware Information ScreenShots .....")
+        self.press_key_remote("DOWN", 7)
+        prev_img = self.screenshot_windows(folder="Firmware", serial_number=serial_number, picture_name=f"Firmware About_{screenshot_name}",  shot=page_count, window_title="About Network Analyzer", full_screen=False)
+        report_step(name=f"Firmware Information ScreenShot #N{page_count}", status="INFO", progress=29,
+                    results_list=results_list, value=f"Firmware Information ScreenShot #N{page_count}",
+                    image_path=prev_img, worker=worker, logger=logger)
+        while not all_captured:
+            print(f" > Processing page {page_count}...")
+            print(f" > Moving list {steps} Page Down.....")
+            self.press_key_remote("DOWN", steps)
+            print(" > Waiting 5 seconds to Image recovered .....")
+            time.sleep(5)
+
+            page_count += 1
+            curr_img = self.screenshot_windows(folder="Firmware", serial_number=serial_number, picture_name=f"Firmware About_{screenshot_name}",  shot=page_count, window_title="About Network Analyzer", full_screen=False)
+            if self.is_last_page(prev_img, curr_img):
+                print(" !!! Reached the end of the list (Images are identical).")
+                if os.path.exists(curr_img):
+                    os.remove(curr_img)
+                all_captured = True
+            else:
+                prev_img = curr_img
+                report_step(name=f"Firmware Information ScreenShot #N{page_count}",
+                            status="INFO", progress=29, results_list=results_list,
+                            value=f"Firmware Information ScreenShot #N{page_count}", image_path=curr_img,
+                            worker=worker, logger=logger)
+
+        print("Done. All firmware information captured.")
 
     # The screenshot all system information windows function - operat no the remote device
     def capture_all_system_information(self, serial_number, results_list, worker, logger):
@@ -4437,6 +4878,11 @@ class WINconn:
                 foreach ($w in $before) {
                     Write-Log "BEFORE_MORE HWND=$($w.Handle) TITLE=$($w.Title)"
                 }
+                if ($env:COMPUTERNAME -match 'N5244B') {
+                    $wshell.SendKeys("{TAB}")
+                    Start-Sleep -Milliseconds 400
+                    Write-Log "MORE_TAB_SENT"
+                }
                 $wshell.SendKeys("{ENTER}")
                 Start-Sleep -Milliseconds 1200
                 Write-Log "MORE_ENTER_SENT"
@@ -4457,7 +4903,7 @@ class WINconn:
                     Write-Log "VNA_WINDOW HWND=$($w.Handle) TITLE=$($w.Title)"
                 }
                 $aboutWindow = $windows |
-                    Where-Object { $_.Title -eq $aboutTitle } |
+                    Where-Object { $_.Title.Trim() -eq $aboutTitle } |
                     Select-Object -First 1
                 if (-not $aboutWindow) {
                     throw "About Network Analyzer window not found"
@@ -4547,9 +4993,7 @@ class WINconn:
                 $wshell.SendKeys("{ESC}")
                 Start-Sleep -Milliseconds 700
                 Write-Log "ABOUT_ESC_SENT"  
-                $remaining = @(Get-VnaWindows | Where-Object {
-                    $_.Title -eq $aboutTitle
-                })    
+                $remaining = @(Get-VnaWindows | Where-Object { $_.Title.Trim() -eq $aboutTitle })    
                 if ($remaining.Count -gt 0) {
                     throw "About window is still open after ESC"
                 }    
@@ -4771,7 +5215,7 @@ class WINconn:
                 f"-Force -ErrorAction SilentlyContinue"
             )
 
-    def capture_e508x_firmware_info(self, serial_number, results_list, worker, logger):
+    def capture_firmware_info(self, serial_number, results_list, worker, logger):
 
         page_count = 1
         capture_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -4783,7 +5227,7 @@ class WINconn:
             raise RuntimeError(message)
 
         # 2. Screenshot About + More
-        image = self.screenshot_network(folder="Firmware", serial_number=serial_number, picture_name=f"Firmware More_{screenshot_name}", shot=page_count, full_screen=True)
+        image = self.screenshot_windows(folder="Firmware", serial_number=serial_number, picture_name=f"Firmware More_{screenshot_name}", shot=page_count, full_screen=True)
         if not image:
             raise RuntimeError("Failed to capture More screenshot")
 
@@ -4798,17 +5242,72 @@ class WINconn:
             raise RuntimeError(message)
 
         # 4. SCREENSHOT - ABOUT ONLY
-        image = self.screenshot_network(folder="Firmware", serial_number=serial_number, picture_name=f"Firmware About_{screenshot_name}",  shot=page_count, window_title="About Network Analyzer", full_screen=False)
+        image = self.screenshot_windows(folder="Firmware", serial_number=serial_number, picture_name=f"Firmware About_{screenshot_name}",  shot=page_count, window_title="About Network Analyzer", full_screen=False)
         if not image:
             raise RuntimeError("About screenshot failed")
         print(" > About screenshot completed.")
         report_step(name=f"Firmware Information ScreenShot #N{page_count}", status="INFO", progress=28, results_list=results_list, value=f"Firmware Information ScreenShot #N{page_count}", image_path=image, worker=worker, logger=logger)
 
-        # 5. CLOSE ABOUT WINDOW
+        # 5. Continue Screenshot - for more firmware information
+        self.capture_all_firmware_information(serial_number,results_list, worker, logger)
+        # 6. CLOSE ABOUT WINDOW
         success, message = self.open_e508x_about_window(action="close")
         print(success, message)
         if not success:
             raise RuntimeError(message)
+
+def identify_remote_device(target_ip, worker=None, logger=None):
+    model = identify_instrument_before_login(target_ip)
+    if model.startswith("N52"):
+        return device_remote_n52xxb(target_ip, worker=worker, logger=logger)
+
+    # Preserve the exact existing E50/N90 sequence, including unknown hostnames.
+    print(f" > Using original E50/N90 connection procedure (pre-login model: {model or 'unknown'})")
+    return device_remote_to_administrator(target_ip, worker=worker, logger=logger)
+
+def identify_instrument_before_login(target_ip):
+
+    names = []
+    try:
+        names.append(socket.gethostbyaddr(target_ip)[0])
+    except (OSError, socket.herror):
+        pass
+
+    try:
+        proc = subprocess.run(
+            ["nbtstat", "-A", target_ip], capture_output=True,
+            text=True, errors="replace", timeout=7,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        # The <00> UNIQUE NetBIOS entry normally identifies the machine.
+        for line in proc.stdout.splitlines():
+            match = re.match(r"^\s*([^\s<>]+)\s+<00>\s+UNIQUE", line, re.I)
+            if match:
+                names.append(match.group(1))
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+    for name in names:
+        match = re.search(r"(?:^|[^A-Z0-9])(N52\d{2}B|N90\d{2}[A-Z]|E50\d{2}[A-Z])(?:[^A-Z0-9]|$)", name, re.I)
+        if match:
+            model = match.group(1).upper()
+            print(f" > Pre-login device model from hostname: {model}")
+            return model
+
+    # Read-only SCPI query; use short timeouts to avoid delaying older devices.
+    try:
+        with socket.create_connection((target_ip, 5025), timeout=2) as sock:
+            sock.settimeout(2)
+            sock.sendall(b"*IDN?\n")
+            data = sock.recv(512).decode("ascii", errors="replace")
+        match = re.search(r"\b(N5234B|N90\d{2}B|E50\d{2}[A-Z])\b", data, re.I)
+        if match:
+            model = match.group(1).upper()
+            print(f" > Pre-login device model from *IDN?: {model}")
+            return model
+    except (OSError, UnicodeError):
+        pass
+    return None
 
 def device_remote_to_administrator(target_ip, worker=None, logger=None):
     results_list = []
@@ -4828,8 +5327,12 @@ def device_remote_to_administrator(target_ip, worker=None, logger=None):
         real_inst_password = updater.check_password(username="Instrument", passwords=inst_passwords)
         admin_password = real_admin_password
         instrument_password = real_inst_password
-        updater.username = "Administrator"
-        updater.password = real_admin_password
+        if admin_password is not None:
+            updater.username = "Administrator"
+            updater.password = real_admin_password
+        else:
+            updater.username = "Instrument"
+            updater.password = real_inst_password
         updater.session = None
 
         updater.copy_file_to_remote(target_ip, admin_user, admin_password, source, exe_file_name, None, exe_destination_file)
@@ -4908,15 +5411,107 @@ def device_remote_to_administrator(target_ip, worker=None, logger=None):
         print(f"Error connecting to WIN user: {e}")
         report_step(f"Error connecting to WIN user: {e}", "FAIL", 8, results_list, " ", None, worker, logger)
 
+def device_remote_n52xxb(target_ip, worker=None, logger=None, password=None, copy_files=True, run_bat=True):
+
+    results_list = []
+    admin_user = "Instrument"
+    admin_password = ""
+    exe_destination_file = r'C$\Windows\Temp'
+    bat_file_name = "InterlligentTester.bat"
+    exe_file_name = "nircmd.exe"
+    source = load_configFile("bat_mircmd_path")
+    try:
+        updater = WINconn(target_ip, admin_user, admin_password)
+        admin_passwords = get_passwords("Instrument", load_configFile("password_path"))
+        real_admin_password = updater.check_password(username="Instrument", passwords=admin_passwords)
+        admin_password = real_admin_password
+        updater.username = "Instrument"
+        updater.password = admin_password
+        updater.session = None
+
+        updater.copy_file_to_remote(target_ip, admin_user, admin_password, source, exe_file_name, None,
+                                    exe_destination_file)
+        report_step("Copy the mircmd file to the device", "PASS", 1, results_list, " ", None, worker, logger)
+        updater.setup_local_machine(worker, logger)
+
+        if not updater.wait_for_winrm_port(timeout=90, worker=worker, logger=logger):
+            report_step("WinRM is not ready - trying bootstrap via schtasks", "INFO", 1, results_list, " ", None, worker,
+                        logger)
+            if not updater.bootstrap_winrm_via_schtasks(admin_user, admin_password):
+                print(" > Failed to bootstrap WinRM")
+                report_step("Failed to bootstrap WinRM", "FAIL", 1, results_list, " ", None, worker, logger)
+                return False
+            updater.setup_local_machine(worker, logger)
+
+        report_step("Connect to remote device", "PASS", 1, results_list, " ", None, worker, logger)
+
+        if not updater.connect():
+            report_step("Failed to connect to remote device using WinRM", "FAIL", 1, results_list, " ", None, worker,
+                        logger)
+            return False
+
+        current_user = updater.get_current_user()
+        print(f" > Current active user: {current_user}")
+        report_step(f"Current active user: {current_user}", "INFO", 2, results_list, " ", None, worker, logger)
+
+        if current_user is None:
+            report_step("Cannot detect current active user", "FAIL", 2, results_list, " ", None, worker, logger)
+            return False
+
+        updater.copy_file_to_remote(target_ip, admin_user, admin_password, source, bat_file_name)
+        report_step("Copy the BAT file to the device", "PASS", 4, results_list, " ", None, worker, logger)
+        report_step("Running the BAT file on the device 90 sec..Please wait doing somethings in the background", "INFO",
+                    4, results_list, " ", None, worker, logger)
+        updater.run_bat_file()
+        report_step("Remote Device to by control by local computer", "PASS", 4, results_list, " ", None, worker, logger)
+        model = updater.get_model()
+        report_step(f"Model Device is: {model}", "INFO", 5, results_list, " ", None, worker, logger)
+
+        app_path = updater.find_launch_network_path()
+        print(app_path)
+        report_step(f"Launch Network Path: {app_path}", "INFO", 6, results_list, " ", None, worker, logger)
+        if updater.launch_app(app_path):
+            report_step("Launch Network Program", "PASS", 8, results_list, " ", None, worker, logger)
+        else:
+            report_step("Failed to launch Network Program", "FAIL", 8, results_list, " ", None, worker, logger)
+            return model
+
+        return model
+
+    except Exception as exc:
+        print(f" > N5234B preparation FAILED: {exc}")
+        return None
+
 if __name__ == "__main__":
 
     target_ip = "192.168.1.200"
     serial_number = "MY59202793"
-    user = "Administrator"
-    password = "Keysight4u!"
+    user = "Instrument"
+    password = "measure4u"
+    #user = "Administrator"
+    #password = "Keysight4u!"
 
     updater = WINconn(target_ip, user, password)
-    updater.capture_e508x_firmware_info(serial_number)
+    image = updater.screenshot_windows(
+        folder="Firmware",
+        serial_number="MY56042207",
+        picture_name="Firmware More",
+        shot=1,
+        full_screen=True
+    )
+
+    print(image)
+
+    image = updater.screenshot_windows(
+        folder="Firmware",
+        serial_number="MY56042207",
+        picture_name="Firmware About",
+        shot=2,
+        window_title="About Network Analyzer",
+        full_screen=False
+    )
+
+    print(image)
 
     #pdater.uninstall_all_calibration_advisors(False)
     #updater.close_firmware_revision()
