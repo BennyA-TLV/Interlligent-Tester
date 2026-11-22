@@ -550,6 +550,11 @@ def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_
             firmware_images, system_images, license_images, system_info_images = get_e508x_email_images(serial_number)
             subject, html_body = build_new_e508x_device_email(pdf_info=pdf_info, firmware_images=firmware_images, system_images=system_images, system_info_images=system_info_images, license_images=license_images, preview=preview)
 
+        elif is_n52_family and is_new_device:
+            firmware_images, system_images, license_images, system_info_images = get_e508x_email_images(serial_number)
+            subject, html_body = build_new_e508x_device_email(pdf_info=pdf_info, firmware_images=firmware_images, system_images=system_images, system_info_images=system_info_images, license_images=license_images, preview=preview)
+
+
             # =====================================================
             # REGULAR DEVICE
             # =====================================================
@@ -1005,6 +1010,174 @@ def extract_device_info_from_pdf(pdf_file):
                 break
 
         model = str(info.get("device_type", "")).upper()
+        # =====================================================
+        # N52XX - HARDWARE OPTIONS + KEYSIGHT LICENSE MANAGER
+        # =====================================================
+
+        if re.fullmatch(r"N52\d{2}[A-Z]", model):
+
+            # -------------------------------------------------
+            # HARDWARE OPTIONS
+            # -------------------------------------------------
+
+            hw_match = re.search(
+                r"System\s+Information\s+"
+                r"Option\s+ID\s+Name/Description\s+Option\s+Version"
+                r"(.*?)"
+                r"(?=Keysight\s+License\s+Manager|\Z)",
+                text,
+                re.IGNORECASE | re.DOTALL
+            )
+
+            if hw_match:
+
+                hw_text = hw_match.group(1)
+
+                # Remove repeated table headers across PDF pages
+                hw_text = re.sub(
+                    r"Option\s+ID\s+Name/Description\s+Option\s+Version",
+                    "",
+                    hw_text,
+                    flags=re.IGNORECASE
+                )
+
+                hw_options = []
+
+                # Each hardware row ends with the Option Version field
+                hw_rows = re.split(
+                    r"(?m)^\s*-\s*-\s*-\s*$",
+                    hw_text
+                )
+
+                for row in hw_rows:
+
+                    lines = [
+                        line.strip()
+                        for line in row.splitlines()
+                        if line.strip()
+                    ]
+
+                    if len(lines) < 2:
+                        continue
+
+                    option_id = lines[0].upper()
+
+                    if not re.fullmatch(r"[A-Z0-9]{3,5}", option_id):
+                        continue
+
+                    description = " ".join(lines[1:])
+                    description = re.sub(
+                        r"\s+", " ", description
+                    ).strip()
+
+                    hw_options.append({
+                        "option_id": option_id,
+                        "description": description
+                    })
+
+                info["option_descriptions"] = hw_options
+
+                info["device_options"] = ",".join(
+                    option["option_id"]
+                    for option in hw_options
+                )
+
+            # -------------------------------------------------
+            # KEYSIGHT LICENSE MANAGER
+            # -------------------------------------------------
+
+            license_match = re.search(
+                r"Keysight\s+License\s+Manager\s+"
+                r"Option\s+ID\s+Name/Description"
+                r"(.*?)"
+                r"(?=firmware\s+Information|"
+                r"Windows\s+Updates|"
+                r"Image\s+\d+\s*:|\Z)",
+                text,
+                re.IGNORECASE | re.DOTALL
+            )
+
+            if license_match:
+
+                license_text = license_match.group(1)
+
+                license_lines = [
+                    line.strip()
+                    for line in license_text.splitlines()
+                    if line.strip()
+                ]
+
+                license_options = []
+                current_id = None
+                description_parts = []
+
+                def save_n52_license():
+
+                    if current_id is None:
+                        return
+
+                    description = " ".join(description_parts)
+                    description = re.sub(
+                        r"\s+", " ", description
+                    ).strip()
+
+                    license_options.append({
+                        "option_id": current_id,
+                        "description": description
+                    })
+
+                license_pattern = re.compile(
+                    r"^("
+                    r"N52\d{2}[A-Z]-[A-Z0-9]+"
+                    r"|N\d{4}[A-Z]-[A-Z0-9]+"
+                    r"|S\d+[A-Z0-9]*[-_][A-Z0-9]+"
+                    r")"
+                    r"(?:\s+(.+))?$",
+                    re.IGNORECASE
+                )
+
+                for line in license_lines:
+
+                    match = license_pattern.match(line)
+
+                    if match:
+
+                        save_n52_license()
+
+                        current_id = match.group(1).upper()
+                        description_parts = []
+
+                        if match.group(2):
+                            description_parts.append(
+                                match.group(2)
+                            )
+
+                    elif current_id is not None:
+                        description_parts.append(line)
+
+                save_n52_license()
+
+                info["license_options"] = license_options
+
+            # -------------------------------------------------
+            # FINAL STATUS
+            # -------------------------------------------------
+
+            final_status_match = re.search(
+                r"Final\s+Status\s+(PASSED|FAILED|PASS|FAIL)",
+                flat_text,
+                re.IGNORECASE
+            )
+
+            if final_status_match:
+                final_status = final_status_match.group(1).upper()
+
+                info["self_test_status"] = (
+                    "PASSED"
+                    if final_status in ("PASS", "PASSED")
+                    else "FAILED"
+                )
+
         if re.match(r"^E50\d{2}[A-Z]$", model):
             option_descriptions = []
             table_match = re.search(
@@ -2758,12 +2931,12 @@ if __name__ == "__main__":
         "Benny.a@tlv-mm.com"
     ]
 
-    device_name = "E5080B"
+    device_name = "N5244B"
     device_type = "Network Analyzer"
     slot = "SLOT1"
     ip = "192.168.1.100"
     final_status = "PASS"
-    pdf_file = r"C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results\MY59202793\MY59202793.pdf"
+    pdf_file = r"C:\Users\benny\Documents\PycharmProjects\InterlligentTester\Results\MY56042207\MY56042207.pdf"
 
     pdf_info = extract_device_info_from_pdf(pdf_file)
 
