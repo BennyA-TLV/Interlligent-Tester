@@ -504,7 +504,7 @@ def calibExpartion(extra_data):
 
 def send_test_ended_email(recipients, device_name, device_type, slot, ip, final_status, pdf_file, extra_data, is_new_device):
 
-    preview = True
+    preview = False
 
     if not recipients:
         print("Email recipients list is empty.")
